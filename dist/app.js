@@ -184,7 +184,7 @@ function render(state = session.snapshot()) {
 export function getDiagnosticSnapshot() {
   return {
     schemaVersion: 1,
-    appVersion: '0.5.0',
+    appVersion: '0.5.1',
     exportedAt: new Date().toISOString(),
     mode: 'dpi-configuration',
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext, webHidAvailable: 'hid' in navigator },

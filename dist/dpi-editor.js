@@ -215,12 +215,26 @@ export class DpiEditor {
   }
 
   update(state) {
+    const previousStage = this.#state?.activeDpiStage;
     this.#state = state;
     const config = state.configuration;
     const key = config ? `${config.receivedAt}:${config.packetHex}` : null;
+    const refreshed = key !== null && key !== this.#configKey;
     if (key && key !== this.#configKey && (!this.#draft || (!this.#dirty && !this.#nameDirty && !this.#selectedId))) {
       try { this.#load(dpiSetFromConfiguration(config, state.activeDpiStage ?? config.currentStage), '', '我的灵敏度'); }
       catch (error) { this.#message = error.message; }
+    } else if (config && this.#draft && !state.queryBusy && state.phase === 'connected' && state.link !== 'offline' && (refreshed || previousStage !== state.activeDpiStage)) {
+      try {
+        const live = dpiSetFromConfiguration(config, state.activeDpiStage ?? config.currentStage);
+        // A different draft may have reordered/deleted slots. Follow only the
+        // device's own DPI group; keep pending values and other presets intact.
+        if (same(this.#draft.values, live.values)) {
+          this.#draft.currentStage = live.currentStage;
+          el('draft-stages').querySelectorAll('input[type="radio"]').forEach((radio) => {
+            radio.checked = Number(radio.value) === live.currentStage;
+          });
+        }
+      } catch { /* Unsupported or incomplete device data must not alter a draft. */ }
     }
     this.#configKey = key;
     this.#controls();
