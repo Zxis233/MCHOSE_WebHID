@@ -1,35 +1,15 @@
 import { G3_PROFILE } from './protocol.js';
 import { G3Session } from './session.js';
+import { DpiEditor } from './dpi-editor.js';
 
 const el = (id) => document.getElementById(id);
 const usable = window.isSecureContext && 'hid' in navigator;
 const timeFormat = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' });
 const time = (value) => value == null ? '--' : timeFormat.format(new Date(value));
 const hex = (value) => value.toString(16).padStart(4, '0').toUpperCase();
-let editorKey = null;
-let editorState = null;
+let dpiEditor = null;
 const session = new G3Session({ hid: usable ? navigator.hid : null, onChange: render });
-
-function selectEditorStage() {
-  const config = editorState?.configuration;
-  const stage = config?.dpiStages.find((item) => item.index === Number(el('dpi-stage').value));
-  el('dpi-value').value = stage && stage.xDpi === stage.yDpi ? String(stage.xDpi) : '';
-  updateEditorButtons();
-}
-
-function updateEditorButtons() {
-  const state = editorState;
-  const stage = state?.configuration?.dpiStages.find((item) => item.index === Number(el('dpi-stage').value));
-  const dpi = Number(el('dpi-value').value);
-  const valid = Number.isInteger(dpi) && dpi >= 100 && dpi <= 12000 && dpi % 100 === 0;
-  const ready = state?.phase === 'connected' && !state.busy && !state.queryBusy && state.link !== 'offline' && state.identity?.matchesG3 && stage;
-  el('dpi-stage').disabled = !ready;
-  el('dpi-value').disabled = !ready || stage.xDpi !== stage.yDpi;
-  el('save-dpi').disabled = !ready || !valid || stage.xDpi !== stage.yDpi || dpi === stage.xDpi;
-  el('save-dpi').textContent = state?.queryKind === 'write' ? '正在保存…' : '保存 DPI';
-  const last = state?.lastWrite;
-  el('save-status').textContent = last?.status === 'verified' ? `第 ${last.stage} 档已保存为 ${last.dpi} DPI，读回已核对。` : last?.status === 'unchanged' ? '设备当前已经是这个数值。' : last?.status === 'uncertain' ? '上次保存尚未读回确认，请先重新读取设备。' : '100–12000 DPI，步进 100；当前编辑同步修改 X/Y。';
-}
+dpiEditor = new DpiEditor(session);
 
 function badge(id, text, kind = '') {
   el(id).textContent = text;
@@ -88,7 +68,7 @@ function render(state = session.snapshot()) {
   el('config-current').textContent = selectedDpi ? `第 ${activeStage} 档 · ${selectedDpi.xDpi === selectedDpi.yDpi ? selectedDpi.xDpi : `X ${selectedDpi.xDpi} / Y ${selectedDpi.yDpi}`} DPI` : '--';
   el('config-time').textContent = time(config?.receivedAt);
   badge('config-badge', state.queryBusy ? state.queryKind === 'write' ? '保存中' : '读取中' : config ? '已从设备读取' : state.queryError ? '操作未确认' : '未读取', state.queryBusy ? 'waiting' : config ? 'good' : state.queryError ? 'bad' : '');
-  el('query-status').textContent = state.querySlow ? '设备响应较慢。请保持鼠标唤醒；底层请求仍在进行。' : state.queryBusy ? state.queryKind === 'write' ? '正在读取新基线、保存 DPI 并读回核对…' : '正在核对型号并读取配置…' : config ? '型号与配置校验通过。修改 DPI 后点击保存，完成后会读回核对。' : '连接后轻动鼠标，再点击读取设备配置。';
+  el('query-status').textContent = state.querySlow ? '设备响应较慢。请保持鼠标唤醒；底层请求仍在进行。' : state.queryBusy ? state.queryKind === 'write' ? '正在读取新基线、应用 DPI 并读回核对…' : '正在核对型号并读取配置…' : config ? '型号与配置校验通过。编辑完成后点击“应用到鼠标”，随后读回核对。' : '连接后轻动鼠标，再点击读取设备配置。';
   el('query-error').hidden = !state.queryError;
   if (state.queryError) el('query-error').textContent = `${state.queryError.name}: ${state.queryError.message} 请保持官方 HUB 退出，唤醒鼠标后再试。`;
   if (config) {
@@ -108,28 +88,13 @@ function render(state = session.snapshot()) {
     placeholder.textContent = '等待读取板载 DPI 档位。';
     el('dpi-stages').replaceChildren(placeholder);
   }
-  editorState = state;
-  const key = config ? `${config.receivedAt}:${config.packetHex}` : null;
-  if (key !== editorKey) {
-    editorKey = key;
-    if (config) {
-      el('dpi-stage').replaceChildren(...config.dpiStages.map((stage) => {
-        const option = document.createElement('option');
-        option.value = String(stage.index);
-        option.textContent = `第 ${stage.index} 档`;
-        return option;
-      }));
-      el('dpi-stage').value = String(config.currentStage);
-      selectEditorStage();
-    }
-  }
-  updateEditorButtons();
+  dpiEditor?.update(state);
   const reports = state.events.filter((event) => event.type === 'report' || event.type === 'feature').slice(-30).reverse();
   if (reports.length) {
     el('reports').replaceChildren(...reports.map((report) => {
       const row = document.createElement('tr');
       const parsed = report.parsed;
-      const meaning = report.type === 'feature' ? `${report.operation === 'write-dpi' ? 'DPI 保存' : report.operation === 'read-configuration' ? '配置读取' : '产品识别'} · ${report.direction === 'out' ? '请求' : `返回 ${report.receivedBytes} 字节`}` : parsed?.type === 'battery' ? `电量 ${parsed.percent}%` : parsed?.type === 'dpi-stage' ? `切换到第 ${parsed.stage} 档` : parsed?.type === 'connection' ? `鼠标${parsed.online ? '在线' : '离线'}` : '未解析，保留原始报告';
+      const meaning = report.type === 'feature' ? `${report.operation?.startsWith('write-dpi') ? 'DPI 保存' : report.operation === 'read-configuration' ? '配置读取' : '产品识别'} · ${report.direction === 'out' ? '请求' : `返回 ${report.receivedBytes} 字节`}` : parsed?.type === 'battery' ? `电量 ${parsed.percent}%` : parsed?.type === 'dpi-stage' ? `切换到第 ${parsed.stage} 档` : parsed?.type === 'connection' ? `鼠标${parsed.online ? '在线' : '离线'}` : '未解析，保留原始报告';
       const shownHex = report.hex.length > 95 ? `${report.hex.slice(0, 95)} …` : report.hex;
       for (const [index, text] of [time(report.time), shownHex, meaning].entries()) {
         const cell = document.createElement('td');
@@ -152,22 +117,19 @@ function render(state = session.snapshot()) {
 export function getDiagnosticSnapshot() {
   return {
     schemaVersion: 1,
-    appVersion: '0.3.0',
+    appVersion: '0.4.0',
     exportedAt: new Date().toISOString(),
     mode: 'dpi-configuration',
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext, webHidAvailable: 'hid' in navigator },
     profile: { ...G3_PROFILE },
     session: session.snapshot(),
+    dpiEditor: dpiEditor.snapshot(),
   };
 }
 
 el('connect').addEventListener('click', () => { void session.connect(); });
 el('disconnect').addEventListener('click', () => { void session.disconnect(); });
 el('read-config').addEventListener('click', () => { void session.readConfiguration(); });
-el('dpi-stage').addEventListener('change', selectEditorStage);
-el('dpi-value').addEventListener('input', updateEditorButtons);
-el('save-dpi').addEventListener('click', () => { void session.applyDpi(Number(el('dpi-stage').value), Number(el('dpi-value').value)); });
-el('dpi-value').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !el('save-dpi').disabled) el('save-dpi').click(); });
 el('export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(getDiagnosticSnapshot(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

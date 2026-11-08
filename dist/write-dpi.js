@@ -1,6 +1,7 @@
 import { G3_PROFILE, inspectCapabilities, toHex } from './protocol.js';
 import { G3_PRODUCT_CODE } from './identity.js';
 import { parseConfiguration } from './config.js';
+import { validateDpiSet, dpiSetFromConfiguration } from './presets.js';
 
 function configurationPacket(configuration) {
   const parts = configuration?.packetHex?.trim().split(/\s+/);
@@ -10,6 +11,17 @@ function configurationPacket(configuration) {
 }
 
 const checksum = (packet) => packet.subarray(2).reduce((sum, value) => (sum + value) & 0xff, 0);
+
+function writePlan(packet, expected, details) {
+  expected[1] = checksum(expected);
+  const write = new Uint8Array(G3_PROFILE.featurePayloadBytes + 1);
+  write.set(expected);
+  write[2] = 0x04;
+  write[1] = checksum(write);
+  const beforePacketHex = toHex(packet);
+  const expectedPacketHex = toHex(expected);
+  return { ...details, changed: expectedPacketHex !== beforePacketHex, beforePacketHex, expectedPacketHex, payload: write.subarray(1) };
+}
 
 export function buildDpiWrite(configuration, stage, dpi) {
   const { packet, parsed } = configurationPacket(configuration);
@@ -22,27 +34,43 @@ export function buildDpiWrite(configuration, stage, dpi) {
   const value = dpi / 100 - 1;
   view.setUint16(15 + (stage - 1) * 2, value, true);
   view.setUint16(35 + (stage - 1) * 2, value, true);
-  expected[1] = checksum(expected);
-  const write = new Uint8Array(G3_PROFILE.featurePayloadBytes + 1);
-  write.set(expected);
-  write[2] = 0x04; // Observed native write opcode; reads use 0x44.
-  write[1] = checksum(write);
-  return {
-    stage, beforeDpi: before.xDpi, dpi,
-    changed: before.xDpi !== dpi,
-    beforePacketHex: toHex(packet),
-    expectedPacketHex: toHex(expected),
-    payload: write.subarray(1),
-  };
+  return writePlan(packet, expected, { kind: 'single', stage, beforeDpi: before.xDpi, dpi });
+}
+
+export function buildDpiSetWrite(configuration, dpiSet) {
+  const { packet, parsed } = configurationPacket(configuration);
+  const target = validateDpiSet(dpiSet);
+  const beforeDpiSet = dpiSetFromConfiguration(parsed);
+  const expected = packet.slice();
+  expected[11] = (target.currentStage << 4) | target.values.length;
+  const view = new DataView(expected.buffer);
+  target.values.forEach((dpi, index) => {
+    const value = dpi / 100 - 1;
+    view.setUint16(15 + index * 2, value, true);
+    view.setUint16(35 + index * 2, value, true);
+  });
+  // Inactive slots and all non-DPI fields remain from the fresh device read.
+  return writePlan(packet, expected, { kind: 'set', beforeDpiSet, dpiSet: target });
+}
+
+function requireTarget(device, identity) {
+  if (!device.opened || !inspectCapabilities(device).featureCompatible || !identity?.matchesG3 || identity.productCode !== G3_PRODUCT_CODE) throw new Error('未确认目标 G3 接收器，未发送写入。');
 }
 
 export async function sendDpiWrite(device, identity, configuration, stage, dpi, onTransfer = () => {}) {
-  if (!device.opened || !inspectCapabilities(device).featureCompatible || !identity?.matchesG3 || identity.productCode !== G3_PRODUCT_CODE) {
-    throw new Error('未确认目标 G3 接收器，未发送写入。');
-  }
+  requireTarget(device, identity);
   const plan = buildDpiWrite(configuration, stage, dpi);
   if (!plan.changed) return { ...plan, sent: false };
   onTransfer({ api: 'sendFeatureReport', direction: 'out', operation: 'write-dpi', reportId: 9, payloadBytes: plan.payload.length, hex: `09 ${toHex(plan.payload)}` });
+  await device.sendFeatureReport(9, plan.payload);
+  return { ...plan, sent: true };
+}
+
+export async function sendDpiSetWrite(device, identity, configuration, dpiSet, onTransfer = () => {}) {
+  requireTarget(device, identity);
+  const plan = buildDpiSetWrite(configuration, dpiSet);
+  if (!plan.changed) return { ...plan, sent: false };
+  onTransfer({ api: 'sendFeatureReport', direction: 'out', operation: 'write-dpi-set', reportId: 9, payloadBytes: plan.payload.length, hex: `09 ${toHex(plan.payload)}` });
   await device.sendFeatureReport(9, plan.payload);
   return { ...plan, sent: true };
 }

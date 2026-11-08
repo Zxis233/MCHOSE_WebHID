@@ -164,3 +164,57 @@ test('a transient offline report after send cannot be hidden by reconnect', asyn
   assert.equal(session.snapshot().lastWrite.status, 'uncertain');
   assert.match(session.snapshot().queryError.message, /曾离线/);
 });
+
+test('DPI set save changes count/current stage and verifies six slots at both range boundaries', async () => {
+  const { board, session } = fixture();
+  await session.connect();
+  await session.applyDpiSet({ values: [100, 1600, 2400, 3200, 5000, 12000], currentStage: 2 });
+  assert.equal(board.writes.length, 1);
+  assert.equal(session.snapshot().lastWrite.status, 'verified');
+  assert.equal(session.snapshot().configuration.dpiCount, 6);
+  assert.equal(session.snapshot().configuration.currentStage, 2);
+  assert.equal(session.snapshot().configuration.dpiStages[5].xDpi, 12000);
+  assert.deepEqual(session.snapshot().lastWrite.beforeDpiSet, { values: [1600, 2400], currentStage: 2 });
+});
+
+test('even a target-stage notification after SET cannot bypass the physical-switch guard', async () => {
+  const { session } = fixture({ onWrite: ({ device }) => stageReport(device, 1) });
+  await session.connect();
+  await session.applyDpiSet({ values: [800, 1600], currentStage: 1 });
+  assert.equal(session.snapshot().lastWrite.status, 'uncertain');
+  assert.equal(session.snapshot().activeDpiStage, 1);
+});
+
+test('matching stage notifications before SET and an unexpected switch after SET cannot be hidden', async () => {
+  const before = fixture({ onConfigRead: ({ device }) => stageReport(device, 1) });
+  await before.session.connect();
+  await before.session.applyDpiSet({ values: [800, 1600], currentStage: 1 });
+  assert.equal(before.board.writes.length, 0);
+  const after = fixture({ onWrite: ({ device }) => { stageReport(device, 3); stageReport(device, 2); } });
+  await after.session.connect();
+  await after.session.applyDpiSet({ values: [800, 1600, 2400], currentStage: 2 });
+  assert.equal(after.board.writes.length, 1);
+  assert.equal(after.session.snapshot().lastWrite.status, 'uncertain');
+  assert.equal(after.session.snapshot().configuration, null);
+});
+
+test('a no-op DPI set skips SET, while a new selected stage is a real change', async () => {
+  const { board, session } = fixture();
+  await session.connect();
+  await session.applyDpiSet({ values: [1600, 2400], currentStage: 2 });
+  assert.equal(board.writes.length, 0);
+  await session.applyDpiSet({ values: [1600, 2400], currentStage: 1 });
+  assert.equal(board.writes.length, 1);
+  assert.equal(session.snapshot().configuration.currentStage, 1);
+});
+
+test('DPI set intent is copied before async baseline reads', async () => {
+  const { session } = fixture();
+  await session.connect();
+  const target = { values: [800, 1600, 2400], currentStage: 2 };
+  const job = session.applyDpiSet(target);
+  target.values[0] = 12000;
+  target.currentStage = 3;
+  await job;
+  assert.deepEqual(session.snapshot().lastWrite.dpiSet, { values: [800, 1600, 2400], currentStage: 2 });
+});

@@ -1,7 +1,7 @@
 import { G3_PROFILE, batteryView, describeDevice, inspectCapabilities, parseInputReport, toHex } from './protocol.js';
 import { queryProductIdentity } from './identity.js';
 import { queryConfiguration } from './config.js';
-import { buildDpiWrite, sendDpiWrite } from './write-dpi.js';
+import { buildDpiWrite, sendDpiWrite, buildDpiSetWrite, sendDpiSetWrite } from './write-dpi.js';
 
 export class G3Session {
   #hid;
@@ -248,6 +248,14 @@ export class G3Session {
   }
 
   async applyDpi(stage, dpi) {
+    return this.#applyDpiChange({ kind: 'single', stage, dpi });
+  }
+
+  async applyDpiSet(dpiSet) {
+    return this.#applyDpiChange({ kind: 'set', dpiSet: structuredClone(dpiSet) });
+  }
+
+  async #applyDpiChange(request) {
     if (this.#queryJob) return;
     if (this.#phase !== 'connected' || !this.#device || this.#link === 'offline') {
       this.#queryError = { name: 'DeviceUnavailable', message: '请连接并唤醒鼠标后保存。' };
@@ -258,6 +266,8 @@ export class G3Session {
     const generation = this.#generation;
     const revision = this.#stageRevision;
     const offlineRevision = this.#offlineRevision;
+    const isSet = request.kind === 'set';
+    const { stage, dpi, dpiSet } = request;
     const job = { device, generation, kind: 'write' };
     const current = () => generation === this.#generation && device === this.#device && this.#phase === 'connected';
     const check = () => {
@@ -270,7 +280,7 @@ export class G3Session {
     this.#queryJob = job;
     this.#queryError = null;
     this.#querySlow = false;
-    this.#record('dpi-save-started', { stage, dpi });
+    this.#record('dpi-save-started', { kind: request.kind, ...(isSet ? { dpiSet } : { stage, dpi }) });
     this.#lastWrite = null;
     this.#notify();
     const timer = setTimeout(() => {
@@ -278,7 +288,7 @@ export class G3Session {
     }, this.#warningAfterMs);
     const transfer = (details) => {
       if (current()) this.#record('feature', details);
-      if (details.operation === 'write-dpi' && entry) {
+      if (['write-dpi', 'write-dpi-set'].includes(details.operation) && entry) {
         entry.attempted = true;
         entry.status = 'attempting';
       }
@@ -290,9 +300,10 @@ export class G3Session {
       if (!identity.matchesG3) throw new Error('产品标识不匹配 G3，未写入。');
       const fresh = await queryConfiguration(device, identity, transfer);
       check();
-      const plan = buildDpiWrite(fresh, stage, dpi);
+      const plan = isSet ? buildDpiSetWrite(fresh, dpiSet) : buildDpiWrite(fresh, stage, dpi);
       entry = {
-        startedAt: new Date(this.#now()).toISOString(), stage, dpi, beforeDpi: plan.beforeDpi,
+        startedAt: new Date(this.#now()).toISOString(), kind: request.kind,
+        ...(isSet ? { dpiSet: plan.dpiSet, beforeDpiSet: plan.beforeDpiSet } : { stage, dpi, beforeDpi: plan.beforeDpi }),
         beforePacketHex: plan.beforePacketHex, expectedPacketHex: plan.expectedPacketHex,
         status: plan.changed ? 'prepared' : 'unchanged', attempted: false,
       };
@@ -304,10 +315,11 @@ export class G3Session {
       }
       this.#writeHistory.push(entry);
       if (this.#writeHistory.length > 10) this.#writeHistory.shift();
-      this.#record('dpi-write-backup', { stage, dpi, beforePacketHex: plan.beforePacketHex });
+      this.#record('dpi-write-backup', { kind: request.kind, ...(isSet ? { dpiSet: plan.dpiSet } : { stage, dpi }), beforePacketHex: plan.beforePacketHex });
       this.#notify();
       check();
-      await sendDpiWrite(device, identity, fresh, stage, dpi, transfer);
+      if (isSet) await sendDpiSetWrite(device, identity, fresh, dpiSet, transfer);
+      else await sendDpiWrite(device, identity, fresh, stage, dpi, transfer);
       entry.status = 'sent';
       await new Promise((resolve) => setTimeout(resolve, 100));
       check();
@@ -318,7 +330,7 @@ export class G3Session {
       entry.status = 'verified';
       this.#configuration = { ...readback, receivedAt: this.#now() };
       this.#activeDpiStage = readback.currentStage;
-      this.#record('dpi-save-verified', { stage, dpi });
+      this.#record('dpi-save-verified', { kind: request.kind, ...(isSet ? { dpiSet: plan.dpiSet } : { stage, dpi }) });
     } catch (error) {
       if (entry) {
         entry.status = entry.attempted ? 'uncertain' : 'cancelled';
