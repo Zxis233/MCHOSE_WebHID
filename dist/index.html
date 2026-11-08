@@ -1,89 +1,136 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#147d64">
-  <meta name="description" content="迈从 G3 V1 的本地网页驱动：电量、DPI 档位与多套灵敏度预设。">
-  <title>G3 V1 · DPI 与灵敏度预设</title>
+  <meta name="theme-color" content="#151618">
+  <meta name="description" content="迈从 G3 V1 网页配置工具">
+  <title>设备设置 · G3 V1</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="G3 WebHID 首页"><span class="brand-mark" aria-hidden="true">M</span><span>MCHOSE <b>DEVICE LAB</b></span></a>
-    <span class="mode-pill"><span class="dot"></span>本机直连</span>
-  </header>
-  <main>
-    <section class="intro">
-      <div><p class="eyebrow">G3 V1 / 2.4G 接收器</p><h1>让灵敏度适合每个场景。</h1><p class="intro-text">自由增减 DPI 档位，保存多套预设，应用后读回确认。</p></div>
-      <span class="phase-label">v0.4.0 <span>/ 档位与预设</span></span>
-    </section>
-
-    <ol class="steps" aria-label="开发进度">
-      <li class="complete"><span>✓</span><div><strong>连接与电量</strong><small>已实测</small></div></li>
-      <li class="complete"><span>✓</span><div><strong>读取设备配置</strong><small>已实测</small></div></li>
-      <li class="active" aria-current="step"><span>03</span><div><strong>DPI 档位与预设</strong><small>2–6 档 · 多套配置</small></div></li>
-    </ol>
-
-    <div id="compatibility" class="notice" role="status" hidden></div>
-    <div id="error" class="notice error" role="alert" hidden></div>
-
-    <section class="workspace" aria-label="设备状态">
-      <article class="card connection-card">
-        <div class="card-heading"><h2>设备连接</h2><span id="connection-badge" class="badge" aria-live="polite">未连接</span></div>
-        <div class="mouse-illustration" aria-hidden="true"><svg viewBox="0 0 160 160" fill="none"><path d="M44 72C44 47 58 28 80 28s36 19 36 44v31c0 21-14 34-36 34s-36-13-36-34V72Z" fill="#EFF4F2" stroke="#8DA99D" stroke-width="2"/><path d="M80 29v43M45 77h70" stroke="#8DA99D" stroke-width="2"/><rect x="75" y="46" width="10" height="23" rx="5" fill="#147D64"/><path d="m35 85-4 23m4-6-5 19" stroke="#AFC2B9" stroke-width="2" stroke-linecap="round"/></svg></div>
-        <p id="device-name" class="device-name">迈从 G3 V1</p>
-        <p id="connection-help" class="muted centered">保持接收器插入，使用 2.4G 模式。</p>
-        <button id="connect" class="button primary" type="button">连接接收器 <span aria-hidden="true">↗</span></button>
-        <button id="disconnect" class="button secondary" type="button" disabled>断开连接</button>
-        <p class="small-note">首次连接需在浏览器弹窗中选择设备。</p>
-      </article>
-
-      <article class="card battery-card">
-        <div class="card-heading"><h2>实时电量</h2><span id="battery-badge" class="badge">等待连接</span></div>
-        <div class="battery-reading" aria-live="polite"><span id="battery-value">--</span><span class="percent">%</span></div>
-        <div class="battery-track" role="progressbar" aria-label="鼠标电量" aria-valuemin="0" aria-valuemax="100"><span id="battery-fill"></span></div>
-        <p id="battery-help" class="muted">连接后等待鼠标主动上报。</p>
-        <dl class="metrics"><div><dt>接收器</dt><dd id="receiver-state">未连接</dd></div><div><dt>鼠标链路</dt><dd id="mouse-state">尚未确认</dd></div><div><dt>最近电量</dt><dd id="battery-time">--</dd></div><div><dt>收到报告</dt><dd id="report-count">0</dd></div></dl>
-        <p class="battery-footnote">已有样本约每 48 秒上报一次。鼠标休眠时可能暂停；超过 180 秒的读数会标记为过期。</p>
-      </article>
-    </section>
-
-    <section class="card config-card" aria-labelledby="config-heading">
-      <div class="card-heading"><div><h2 id="config-heading">设备配置 <span id="config-badge" class="badge">未读取</span></h2><p id="query-status" class="muted" role="status">连接后轻动鼠标，再点击读取设备配置。</p></div><button id="read-config" class="button primary compact" type="button" disabled>读取设备配置</button></div>
-      <div id="query-error" class="notice error" role="alert" hidden></div>
-      <dl class="metrics config-metrics"><div><dt>产品型号</dt><dd id="config-model">待识别</dd></div><div><dt>回报率</dt><dd id="config-polling">--</dd></div><div><dt>当前 DPI</dt><dd id="config-current">--</dd></div><div><dt>读取时间</dt><dd id="config-time">--</dd></div></dl>
-      <div id="dpi-stages" class="dpi-stages" aria-label="板载 DPI 档位"><span class="muted">等待读取板载 DPI 档位。</span></div>
-      <div class="preset-workspace">
-        <aside class="preset-panel" aria-label="灵敏度预设">
-          <div class="editor-heading"><h3>灵敏度预设</h3><button id="new-preset" class="button compact" type="button">新建预设</button></div>
-          <label for="preset-select">选择预设<select id="preset-select"><option value="">未保存草稿</option></select></label>
-          <label for="preset-name">预设名称<input id="preset-name" type="text" maxlength="40" placeholder="例如：办公、游戏"></label>
-          <div class="preset-actions"><button id="save-preset" class="button secondary" type="button">保存预设</button><button id="copy-preset" class="button" type="button">另存为新预设</button><button id="delete-preset" class="button text-button" type="button">删除预设</button></div>
-          <p class="small-note">预设保存在当前浏览器；载入后点击右侧应用。建议导出备份。</p>
-          <div class="preset-transfer"><button id="import-presets" class="button compact" type="button">导入 JSON</button><button id="export-presets" class="button compact" type="button">导出预设</button></div>
-          <input id="preset-file" type="file" accept=".json,application/json" hidden>
-        </aside>
-        <div class="draft-panel">
-          <div class="editor-heading"><h3>档位草稿 <span id="draft-state" class="badge">等待载入</span></h3><button id="from-device" class="button compact" type="button">从设备载入</button></div>
-          <div id="draft-stages" class="draft-stages" aria-label="编辑 DPI 档位"></div>
-          <div class="draft-toolbar"><button id="add-dpi" class="button" type="button">＋ 添加档位</button><button id="restore-draft" class="button compact" type="button" hidden>恢复上个草稿</button><span id="draft-count" class="muted">0 / 6 档</span><span class="muted">100–12000 DPI · 步进 100</span></div>
-          <p id="save-status" class="muted" role="status">读取配置后可编辑 DPI。</p>
-          <button id="apply-dpi-set" class="button primary apply-set" type="button" disabled>应用到鼠标</button>
-        </div>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="brand" href="#settings" aria-label="G3 V1 设备设置">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span class="brand-name">MCHOSE<small>G3 V1</small></span>
+      </a>
+      <nav class="navigation" aria-label="页面">
+        <a class="nav-link" href="#settings" data-view="settings" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg>
+          <span>设备设置</span>
+        </a>
+        <a class="nav-link" href="#debug" data-view="debug">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 7 5 5-5 5m8 0h6"/></svg>
+          <span>调试</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换到浅色模式">
+          <svg class="theme-icon-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+          <svg class="theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15a8.5 8.5 0 0 1-11-11A8.5 8.5 0 1 0 20 15Z"/></svg>
+          <span id="theme-label">浅色模式</span>
+        </button>
+        <span class="app-version">v0.5.0</span>
       </div>
-      <p id="preset-status" class="preset-status" role="status">读取设备配置，或新建一套预设。</p>
-    </section>
+    </aside>
 
-    <section class="card reports-card" aria-labelledby="reports-heading">
-      <div class="card-heading"><div><h2 id="reports-heading">通信记录</h2><p class="muted">厂商输入与配置读取，最近 30 条；完整字节可导出。</p></div><button id="export" class="button compact" type="button">导出诊断 JSON <span aria-hidden="true">↓</span></button></div>
-      <div class="table-scroll"><table><thead><tr><th>接收时间</th><th>原始报告</th><th>解析结果</th></tr></thead><tbody id="reports"><tr><td colspan="3" class="empty-state">连接设备后，真实报告会显示在这里。</td></tr></tbody></table></div>
-    </section>
+    <main id="main-content" class="main-content" tabindex="-1">
+      <div id="compatibility" class="notice" role="status" hidden></div>
+      <div id="error" class="notice error" role="alert" hidden></div>
+      <div id="query-error" class="notice error" role="alert" hidden></div>
 
-    <details class="card technical"><summary>设备描述与诊断信息 <span>查看详情</span></summary><dl class="technical-grid"><div><dt>浏览器环境</dt><dd id="browser-support">检查中</dd></div><div><dt>设备标识</dt><dd id="device-id">等待连接</dd></div><div><dt>厂商集合</dt><dd id="collection-info">等待读取</dd></div><div><dt>报告能力</dt><dd id="report-info">等待读取</dd></div><div><dt>型号识别</dt><dd id="identity-info">使用 G3 V1 档案，读取配置时核对产品标识。</dd></div></dl><pre id="descriptor">尚无设备描述。</pre></details>
-    <footer><span>本地运行 · 无外部资源</span><span>DPI 保存后读回核对 · 回报率等其他参数当前只读</span></footer>
-  </main>
+      <section id="settings-page" class="page" aria-labelledby="settings-heading">
+        <header class="page-header">
+          <h1 id="settings-heading" tabindex="-1">设备设置</h1>
+          <button id="read-config" class="button secondary" type="button" disabled>读取设备配置</button>
+        </header>
+
+        <section class="panel device-card" aria-label="设备连接与电量">
+          <div class="device-visual">
+            <svg class="mouse-illustration" viewBox="0 0 140 190" fill="none" aria-hidden="true">
+              <path class="mouse-body" d="M70 12C44 12 25 33 25 69l-2 55c-2 34 15 54 47 54s49-20 47-54l-2-55c0-36-19-57-45-57Z"/>
+              <path class="mouse-seam" d="M70 13v67M25 81c25 9 65 9 90 0M31 93l-1 33c-1 24 12 42 40 43"/>
+              <rect class="mouse-wheel" x="64" y="38" width="12" height="28" rx="6"/>
+              <path class="mouse-wheel-detail" d="M68 45h4m-4 5h4m-4 5h4m-4 5h4"/>
+              <path class="mouse-side-button" d="m24 92-1 14m0 8-1 13"/>
+            </svg>
+            <div class="battery-display">
+              <div id="battery-level" class="battery-gauge" role="progressbar" aria-label="鼠标电量" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100">
+                <span class="battery-track"><span id="battery-fill" class="battery-fill"></span></span>
+              </div>
+              <span class="battery-number" aria-live="polite"><span id="battery-value">--</span><span>%</span></span>
+            </div>
+          </div>
+          <div class="device-info">
+            <div class="device-heading"><h2 id="device-name">迈从 G3 V1</h2><span id="connection-badge" class="badge" aria-live="polite">未连接</span></div>
+            <p class="device-mode">2.4G 无线接收器</p>
+            <dl class="device-metrics">
+              <div><dt>当前 DPI</dt><dd id="config-current">--</dd></div>
+              <div><dt>回报率 <span class="readonly">只读</span></dt><dd id="config-polling">--</dd></div>
+            </dl>
+            <div class="device-actions"><button id="connect" class="button primary" type="button">连接接收器</button><button id="disconnect" class="button" type="button" disabled hidden>断开连接</button></div>
+            <p id="connection-help" class="device-note">保持接收器插入，使用 2.4G 模式。</p>
+            <p class="battery-note"><span id="battery-badge">等待电量</span><span class="note-divider" aria-hidden="true">·</span><span id="battery-help">连接后等待上报</span></p>
+          </div>
+        </section>
+
+        <section class="panel settings-panel" aria-labelledby="dpi-heading">
+          <header class="panel-heading"><h2 id="dpi-heading">灵敏度设置</h2><span class="field-hint">100–12000 DPI · 2–6 档</span></header>
+          <div class="preset-workspace">
+            <aside class="preset-panel" aria-label="灵敏度预设">
+              <div class="editor-heading"><h3>预设</h3><button id="new-preset" class="button small" type="button">新建预设</button></div>
+              <label for="preset-select">选择预设<select id="preset-select"><option value="">未保存草稿</option></select></label>
+              <label for="preset-name">名称<input id="preset-name" type="text" maxlength="40" placeholder="预设名称"></label>
+              <button id="save-preset" class="button secondary preset-save" type="button">保存预设</button>
+              <details class="preset-more">
+                <summary>更多操作</summary>
+                <div class="preset-actions">
+                  <button id="copy-preset" class="button" type="button">另存为新预设</button>
+                  <button id="import-presets" class="button" type="button">导入预设</button>
+                  <button id="export-presets" class="button" type="button">导出预设</button>
+                  <button id="delete-preset" class="button danger" type="button">删除预设</button>
+                </div>
+              </details>
+              <input id="preset-file" type="file" accept=".json,application/json" hidden>
+              <p class="field-hint preset-note">预设保存在当前浏览器。</p>
+              <p id="preset-status" class="preset-status" role="status" hidden></p>
+            </aside>
+            <div class="draft-panel">
+              <div class="editor-heading"><div class="draft-title"><h3>DPI 档位</h3><span id="draft-count" class="field-hint">0 / 6 档</span></div><span id="draft-state" class="state-label" hidden></span></div>
+              <div id="draft-stages" class="draft-stages" aria-label="编辑 DPI 档位"></div>
+              <div class="draft-toolbar"><button id="add-dpi" class="button small" type="button">添加档位</button><button id="from-device" class="button small" type="button" disabled>从设备载入</button><button id="restore-draft" class="button small" type="button" hidden>恢复上个草稿</button></div>
+              <div class="apply-footer"><p id="save-status" class="field-hint" role="status"></p><button id="apply-dpi-set" class="button primary" type="button" disabled>应用到鼠标</button></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="debug-page" class="page" aria-labelledby="debug-heading" hidden>
+        <header class="page-header"><h1 id="debug-heading" tabindex="-1">调试</h1><button id="export" class="button secondary" type="button">导出诊断 JSON</button></header>
+        <section class="panel debug-summary" aria-label="会话状态">
+          <dl class="debug-metrics"><div><dt>接收器</dt><dd id="receiver-state">未连接</dd></div><div><dt>鼠标链路</dt><dd id="mouse-state">尚未确认</dd></div><div><dt>最近电量上报</dt><dd id="battery-time">--</dd></div><div><dt>收到报告</dt><dd id="report-count">0</dd></div></dl>
+        </section>
+        <section class="panel reports-panel" aria-labelledby="reports-heading">
+          <header class="panel-heading"><h2 id="reports-heading">通信记录</h2><span class="field-hint">最近 30 条</span></header>
+          <div class="table-scroll"><table><thead><tr><th>时间</th><th>报告</th><th>内容</th></tr></thead><tbody id="reports"><tr><td colspan="3" class="empty-state">暂无通信记录</td></tr></tbody></table></div>
+        </section>
+        <section class="panel debug-config" aria-labelledby="snapshot-heading">
+          <header class="panel-heading"><h2 id="snapshot-heading">配置快照</h2><span id="config-badge" class="badge">未读取</span></header>
+          <dl class="snapshot-metrics"><div><dt>产品型号</dt><dd id="config-model">待识别</dd></div><div><dt>读取时间</dt><dd id="config-time">--</dd></div></dl>
+          <div id="dpi-stages" class="dpi-stages" aria-label="已读取的 DPI 档位"><span class="field-hint">尚未读取配置</span></div>
+          <p id="query-status" class="field-hint" role="status">尚未读取配置</p>
+        </section>
+        <details class="panel technical">
+          <summary>设备描述</summary>
+          <dl class="technical-grid"><div><dt>浏览器环境</dt><dd id="browser-support">检查中</dd></div><div><dt>设备标识</dt><dd id="device-id">等待连接</dd></div><div><dt>厂商集合</dt><dd id="collection-info">等待连接</dd></div><div><dt>报告能力</dt><dd id="report-info">等待连接</dd></div><div><dt>型号识别</dt><dd id="identity-info">尚未识别</dd></div></dl>
+          <pre id="descriptor">尚无设备描述</pre>
+        </details>
+      </section>
+    </main>
+  </div>
 </body>
 </html>

@@ -1,6 +1,7 @@
 import { PRESET_STORAGE_KEY, emptyPresetLibrary, validateDpiSet, dpiSetFromConfiguration, removeDpiStage, readPresetLibrary, updatePresetLibrary, putPreset, deletePreset, validatePresetLibrary } from './presets.js';
 
 const el = (id) => document.getElementById(id);
+const text = (id, value) => { if (el(id).textContent !== value) el(id).textContent = value; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 export class DpiEditor {
@@ -16,7 +17,7 @@ export class DpiEditor {
   #loadedPreset = null;
   #storageBusy = false;
   #configKey = null;
-  #message = '读取设备配置，或新建一套预设。';
+  #message = '';
 
   constructor(session) {
     this.#session = session;
@@ -46,7 +47,7 @@ export class DpiEditor {
         this.#selectedId = '';
         this.#loadedPreset = null;
         this.#dirty = true;
-        this.#message = '预设已删除；当前草稿与鼠标设置保留。';
+        this.#message = '预设已删除，当前编辑内容保留。';
         this.#renderLibrary();
       } catch (error) { this.#message = `删除未保存：${error.message}`; }
       this.#controls();
@@ -74,7 +75,7 @@ export class DpiEditor {
         this.#library = readPresetLibrary(localStorage);
         if (this.#selectedId && !this.#library.profiles.some((item) => item.id === this.#selectedId)) { this.#selectedId = ''; this.#dirty = true; }
         this.#renderLibrary();
-        this.#message = '另一标签页更新了预设列表；当前编辑草稿已保留。';
+        this.#message = '预设列表已更新，当前编辑内容保留。';
       } catch (error) { this.#message = `外部预设更新读取失败：${error.message}`; }
       this.#controls();
     });
@@ -94,7 +95,7 @@ export class DpiEditor {
     this.#loadedPreset = structuredClone(this.#library.profiles.find((item) => item.id === id) ?? null);
     el('preset-name').value = name;
     el('preset-select').value = id;
-    this.#message = (id ? `已载入“${name}”；与设备不同的设置可点击“应用到鼠标”生效。` : '草稿可编辑；保存预设或应用到鼠标。') + (this.#draftBackups.length ? ' 未保存的修改可通过“恢复上个草稿”找回。' : '');
+    this.#message = this.#draftBackups.length ? '未保存修改已暂存，可恢复上个草稿。' : '';
     this.#renderRows();
     this.#controls();
   }
@@ -121,7 +122,7 @@ export class DpiEditor {
       this.#dirty = false;
       this.#nameDirty = false;
       this.#loadedPreset = structuredClone(this.#library.profiles.find((item) => item.id === id));
-      this.#message = '预设已保存到当前浏览器。鼠标设置由“应用到鼠标”单独生效。';
+      this.#message = '预设已保存。';
       this.#renderLibrary();
     } catch (error) { this.#message = `预设未保存：${error.message}`; }
     this.#controls();
@@ -143,7 +144,13 @@ export class DpiEditor {
 
   #renderRows() {
     el('draft-stages').replaceChildren();
-    if (!this.#draft) return;
+    if (!this.#draft) {
+      const empty = document.createElement('p');
+      empty.className = 'editor-empty';
+      empty.textContent = '尚未载入 DPI 档位';
+      el('draft-stages').append(empty);
+      return;
+    }
     this.#draft.values.forEach((dpi, index) => {
       const row = document.createElement('div');
       row.className = 'draft-row';
@@ -160,7 +167,7 @@ export class DpiEditor {
       input.value = Number.isFinite(dpi) ? String(dpi) : '';
       input.setAttribute('aria-label', `第 ${index + 1} 档 DPI`);
       input.addEventListener('input', () => { this.#draft.values[index] = input.value === '' ? NaN : Number(input.value); this.#dirty = true; this.#controls(); });
-      const unit = document.createElement('span'); unit.className = 'muted'; unit.textContent = 'DPI';
+      const unit = document.createElement('span'); unit.className = 'field-hint'; unit.textContent = 'DPI';
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button stage-remove'; remove.textContent = '删除';
       remove.setAttribute('aria-label', `删除第 ${index + 1} 档`);
       remove.addEventListener('click', () => {
@@ -193,12 +200,16 @@ export class DpiEditor {
     el('export-presets').disabled = this.#library.profiles.length === 0;
     el('add-dpi').disabled = busy || !this.#draft || this.#draft.values.length >= 6;
     el('apply-dpi-set').disabled = busy || !valid || matches || !board || this.#state?.phase !== 'connected' || this.#state.link === 'offline';
-    el('apply-dpi-set').textContent = this.#state?.queryKind === 'write' ? '正在应用…' : '应用到鼠标';
-    el('draft-state').textContent = matches ? '与设备一致' : this.#draft ? '待应用草稿' : '等待载入';
-    el('draft-count').textContent = `${this.#draft?.values.length ?? 0} / 6 档`;
-    el('preset-status').textContent = this.#storageReady ? this.#message : '浏览器预设未能读取，原始数据未覆盖。档位草稿仍可使用；请保留本站数据后再排查预设存储。';
+    text('apply-dpi-set', this.#state?.queryKind === 'write' ? '正在应用…' : '应用到鼠标');
+    el('draft-state').hidden = !this.#draft || matches;
+    text('draft-state', '未应用');
+    text('draft-count', `${this.#draft?.values.length ?? 0} / 6 档`);
+    const message = this.#storageReady ? this.#message : '预设读取失败，原有数据未覆盖。';
+    text('preset-status', message);
+    el('preset-status').hidden = !message;
     const last = this.#state?.lastWrite;
-    el('save-status').textContent = last?.status === 'uncertain' ? '上次应用尚未读回确认，请先重新读取设备。' : matches && last?.status === 'verified' && same(this.#draft, last.dpiSet) ? '这套 DPI 设置与设备一致，完整配置读回已核对。' : matches ? '当前草稿与设备一致。' : this.#draft && !valid ? '请保留 2–6 档；各档范围 100–12000、步进 100，并选择一个当前档位。' : '圆点选择应用后的当前档位；增删、编辑完成后统一应用。';
+    const status = this.#state?.queryBusy ? this.#state.queryKind === 'write' ? '正在应用并核对…' : '正在读取配置…' : last?.status === 'uncertain' ? '应用未确认，请重新读取设备。' : matches && last?.status === 'verified' && same(this.#draft, last.dpiSet) ? '已应用' : matches ? '与设备一致' : this.#draft && !valid ? 'DPI 需为 100–12000 之间的 100 的倍数。' : this.#draft ? board ? '修改尚未应用' : '读取设备配置后可应用' : '读取设备配置或选择一个预设。';
+    text('save-status', status);
     el('draft-stages').querySelectorAll('input').forEach((input) => { input.disabled = busy; });
     el('draft-stages').querySelectorAll('button').forEach((button) => { button.disabled = busy || this.#draft.values.length === 2; });
   }
@@ -241,7 +252,7 @@ export class DpiEditor {
         return next;
       });
       this.#renderLibrary();
-      this.#message = `已导入 ${added} 套预设，原有预设保留。选择预设后可载入和应用。`;
+      this.#message = added ? `已导入 ${added} 套预设。` : '没有新增预设。';
     } catch (error) { this.#message = `导入未保存：${error.message}`; }
     this.#controls();
   }
