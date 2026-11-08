@@ -14,8 +14,13 @@ const files = new Map([
   ['/identity.js', ['identity.js', 'text/javascript; charset=utf-8']],
   ['/config.js', ['config.js', 'text/javascript; charset=utf-8']],
   ['/write-dpi.js', ['write-dpi.js', 'text/javascript; charset=utf-8']],
+  ['/write-config.js', ['write-config.js', 'text/javascript; charset=utf-8']],
+  ['/write-polling.js', ['write-polling.js', 'text/javascript; charset=utf-8']],
+  ['/polling-editor.js', ['polling-editor.js', 'text/javascript; charset=utf-8']],
   ['/presets.js', ['presets.js', 'text/javascript; charset=utf-8']],
   ['/dpi-editor.js', ['dpi-editor.js', 'text/javascript; charset=utf-8']],
+  ['/mouse-tester.js', ['mouse-tester.js', 'text/javascript; charset=utf-8']],
+  ['/mouse-test-state.js', ['mouse-test-state.js', 'text/javascript; charset=utf-8']],
 ]);
 const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 const headers = {
@@ -41,7 +46,7 @@ const server = createServer(async (request, response) => {
   catch { response.writeHead(400, headers).end(); return; }
   if (pathname === '/health') {
     response.writeHead(200, { ...headers, 'Content-Type': 'application/json' });
-    response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ app: 'mchose-g3-webhid', version: '0.5.1', mode: 'dpi-configuration' }));
+    response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ app: 'mchose-g3-webhid', version: '0.8.0', mode: 'dpi-configuration' }));
     return;
   }
   const entry = files.get(pathname);

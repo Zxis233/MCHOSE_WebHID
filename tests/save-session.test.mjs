@@ -218,3 +218,102 @@ test('DPI set intent is copied before async baseline reads', async () => {
   await job;
   assert.deepEqual(session.snapshot().lastWrite.dpiSet, { values: [800, 1600, 2400], currentStage: 2 });
 });
+
+test('wake recovery waits for a pending write and never retries that write', async (t) => {
+  let releaseWrite;
+  const { board, session } = fixture({ onWrite: async ({ device }) => {
+    linkReport(device, false); linkReport(device, true);
+    await new Promise((resolve) => { releaseWrite = resolve; });
+  } });
+  t.after(() => session.disconnect());
+  await session.connect(); await session.readConfiguration(); session.startAutomatic();
+  const saving = session.applyDpi(2, 2500);
+  while (!releaseWrite) await new Promise((resolve) => setTimeout(resolve, 5));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(board.reads, 2, 'recovery must not query while SET is unsettled');
+  releaseWrite(); await saving;
+  const deadline = Date.now() + 3000;
+  while (!session.snapshot().configuration && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(board.writes.length, 1);
+  assert.equal(board.reads, 3);
+  assert.equal(session.snapshot().configuration.selectedDpi.xDpi, 2500);
+  assert.equal(session.snapshot().lastWrite.status, 'uncertain');
+});
+
+test('polling saves cover all four rates and restore the entire initial configuration', async () => {
+  const { board, session } = fixture();
+  const initial = board.packet.toString('hex');
+  await session.connect();
+  for (const rate of [125, 250, 500, 1000]) {
+    await session.applyPollingRate(rate);
+    const state = session.snapshot();
+    assert.equal(state.lastWrite.status, 'verified');
+    assert.equal(state.lastWrite.kind, 'polling');
+    assert.equal(state.configuration.pollingRate, rate);
+    assert.deepEqual(state.configuration.dpiStages.map((stage) => stage.xDpi), [1600, 2400]);
+    assert.equal(state.activeDpiStage, 2);
+  }
+  assert.equal(board.writes.length, 4);
+  assert.equal(board.packet.toString('hex'), initial);
+  await session.applyPollingRate(1000);
+  assert.equal(board.writes.length, 4);
+  assert.equal(session.snapshot().lastWrite.status, 'unchanged');
+});
+
+test('polling uses fresh DPI, inactive slots and unrelated fields instead of stale UI values', async () => {
+  const { board, session } = fixture();
+  await session.connect(); await session.readConfiguration();
+  board.packet[11] = 0x12;
+  board.packet.writeUInt16LE(24, 17); board.packet.writeUInt16LE(24, 37);
+  board.packet.writeUInt16LE(89, 25); board.packet[82] = 7;
+  board.packet[1] = board.packet.subarray(2).reduce((sum, byte) => (sum + byte) & 255, 0);
+  const fresh = Buffer.from(board.packet);
+  await session.applyPollingRate(500);
+  const expected = Buffer.from(session.snapshot().lastWrite.expectedPacketHex.replaceAll(' ', ''), 'hex');
+  assert.deepEqual([...expected.keys()].filter((i) => expected[i] !== fresh[i]), [1, 10]);
+  assert.equal(session.snapshot().configuration.currentStage, 1);
+  assert.equal(session.snapshot().configuration.dpiStages[1].xDpi, 2500);
+});
+
+test('polling readback mismatch and transport failure remain uncertain without a retry', async () => {
+  for (const options of [{ ignoreWrite: true }, { failReadback: true }]) {
+    const { board, session } = fixture(options);
+    await session.connect(); await session.applyPollingRate(500);
+    assert.equal(board.writes.length, 1);
+    assert.equal(session.snapshot().lastWrite.status, 'uncertain');
+    assert.equal(session.snapshot().configuration, null);
+    assert.match(session.snapshot().queryError.message, /不会自动重复写入/);
+  }
+});
+
+test('DPI switching or a brief offline cycle during polling baseline read prevents SET', async () => {
+  for (const signal of [(device) => stageReport(device, 1), (device) => { linkReport(device, false); linkReport(device, true); }]) {
+    const { board, session } = fixture({ onConfigRead: ({ device }) => signal(device) });
+    await session.connect(); await session.applyPollingRate(500);
+    assert.equal(board.writes.length, 0);
+    assert.ok(session.snapshot().queryError);
+  }
+});
+
+test('disconnect after polling SET preserves an uncertain backup and blocks readback', async () => {
+  const { board, session } = fixture({ onWrite: ({ hid, device }) => hid.dispatchEvent(Object.assign(new Event('disconnect'), { device })) });
+  await session.connect(); await session.applyPollingRate(500);
+  assert.equal(board.writes.length, 1);
+  assert.equal(board.reads, 1);
+  assert.equal(session.snapshot().phase, 'removed');
+  assert.equal(session.snapshot().writeHistory[0].status, 'uncertain');
+});
+
+test('polling shares the write lock with reads and DPI saves while SET is unsettled', async () => {
+  let release;
+  const { board, session } = fixture({ onWrite: async () => new Promise((resolve) => { release = resolve; }) });
+  await session.connect();
+  const saving = session.applyPollingRate(500);
+  while (!release) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(session.snapshot().queryTarget, 'polling');
+  await Promise.all([session.readConfiguration(), session.applyDpiSet({ values: [800, 1600], currentStage: 1 }), session.applyPollingRate(125)]);
+  assert.equal(board.reads, 1); assert.equal(board.writes.length, 1);
+  release(); await saving;
+  assert.equal(session.snapshot().configuration.pollingRate, 500);
+  assert.equal(session.snapshot().lastWrite.status, 'verified');
+});

@@ -23,6 +23,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></svg>
           <span>设备设置</span>
         </a>
+        <a class="nav-link" href="#test" data-view="test">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="6"/><path d="M12 3v6m-6 1h12"/></svg>
+          <span>按键测试</span>
+        </a>
         <a class="nav-link" href="#debug" data-view="debug">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 7 5 5-5 5m8 0h6"/></svg>
           <span>调试</span>
@@ -34,14 +38,16 @@
           <svg class="theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15a8.5 8.5 0 0 1-11-11A8.5 8.5 0 1 0 20 15Z"/></svg>
           <span id="theme-label">浅色模式</span>
         </button>
-        <span class="app-version">v0.5.1</span>
+        <span class="app-version">v0.8.0</span>
       </div>
     </aside>
 
     <main id="main-content" class="main-content" tabindex="-1">
-      <div id="compatibility" class="notice" role="status" hidden></div>
-      <div id="error" class="notice error" role="alert" hidden></div>
-      <div id="query-error" class="notice error" role="alert" hidden></div>
+      <div id="device-notices">
+        <div id="compatibility" class="notice" role="status" hidden></div>
+        <div id="error" class="notice error" role="alert" hidden></div>
+        <div id="query-error" class="notice error" role="alert" hidden></div>
+      </div>
 
       <section id="settings-page" class="page" aria-labelledby="settings-heading">
         <header class="page-header">
@@ -49,6 +55,7 @@
           <button id="read-config" class="button secondary" type="button" disabled>读取设备配置</button>
         </header>
 
+        <div class="settings-overview">
         <section class="panel device-card" aria-label="设备连接与电量">
           <div class="device-visual">
             <svg class="mouse-illustration" viewBox="0 0 140 190" fill="none" aria-hidden="true">
@@ -70,13 +77,26 @@
             <p class="device-mode">2.4G 无线接收器</p>
             <dl class="device-metrics">
               <div><dt>当前 DPI</dt><dd id="config-current">--</dd></div>
-              <div><dt>回报率 <span class="readonly">只读</span></dt><dd id="config-polling">--</dd></div>
             </dl>
             <div class="device-actions"><button id="connect" class="button primary" type="button">连接接收器</button><button id="disconnect" class="button" type="button" disabled hidden>断开连接</button></div>
             <p id="connection-help" class="device-note">保持接收器插入，使用 2.4G 模式。</p>
             <p class="battery-note"><span id="battery-badge">等待电量</span><span class="note-divider" aria-hidden="true">·</span><span id="battery-help">连接后等待上报</span></p>
           </div>
         </section>
+
+        <section class="panel polling-panel" aria-labelledby="polling-heading">
+          <header class="panel-heading"><h2 id="polling-heading">回报率</h2><span id="polling-current" class="field-hint">尚未读取</span></header>
+          <fieldset id="polling-options" class="polling-options" aria-describedby="polling-description">
+            <legend class="visually-hidden">选择鼠标回报率</legend>
+            <label class="polling-option"><input type="radio" name="polling-rate" value="125" disabled><span>125 <small>Hz</small></span><small>8 ms</small></label>
+            <label class="polling-option"><input type="radio" name="polling-rate" value="250" disabled><span>250 <small>Hz</small></span><small>4 ms</small></label>
+            <label class="polling-option"><input type="radio" name="polling-rate" value="500" disabled><span>500 <small>Hz</small></span><small>2 ms</small></label>
+            <label class="polling-option"><input type="radio" name="polling-rate" value="1000" disabled><span>1000 <small>Hz</small></span><small>1 ms</small></label>
+          </fieldset>
+          <p id="polling-description" class="field-hint polling-note">独立应用，不随 DPI 预设切换。</p>
+          <div class="apply-footer polling-footer"><p id="polling-status" class="field-hint" role="status">读取设备配置后可设置</p><button id="apply-polling" class="button primary" type="button" disabled>应用回报率</button></div>
+        </section>
+        </div>
 
         <section class="panel settings-panel" aria-labelledby="dpi-heading">
           <header class="panel-heading"><h2 id="dpi-heading">灵敏度设置</h2><span class="field-hint">100–12000 DPI · 2–6 档</span></header>
@@ -103,10 +123,53 @@
               <div class="editor-heading"><div class="draft-title"><h3>DPI 档位</h3><span id="draft-count" class="field-hint">0 / 6 档</span></div><span id="draft-state" class="state-label" hidden></span></div>
               <div id="draft-stages" class="draft-stages" aria-label="编辑 DPI 档位"></div>
               <div class="draft-toolbar"><button id="add-dpi" class="button small" type="button">添加档位</button><button id="from-device" class="button small" type="button" disabled>从设备载入</button><button id="restore-draft" class="button small" type="button" hidden>恢复上个草稿</button></div>
-              <div class="apply-footer"><p id="save-status" class="field-hint" role="status"></p><button id="apply-dpi-set" class="button primary" type="button" disabled>应用到鼠标</button></div>
+              <div class="apply-footer"><p id="save-status" class="field-hint" role="status"></p><button id="apply-dpi-set" class="button primary" type="button" disabled>应用 DPI</button></div>
             </div>
           </div>
         </section>
+      </section>
+
+      <section id="mouse-test-page" class="page" aria-labelledby="mouse-test-heading" hidden>
+        <header class="page-header"><h1 id="mouse-test-heading" tabindex="-1">按键测试</h1><button id="reset-mouse-test" class="button secondary" type="button">重置测试</button></header>
+        <p class="test-intro">无需连接接收器，在测试区内操作鼠标即可。</p>
+        <div class="panel mouse-test-workspace">
+          <section class="test-counts" aria-label="按键计数">
+            <div id="test-stat-left" class="test-stat"><strong id="test-count-left">0</strong><span>左键</span></div>
+            <div id="test-stat-right" class="test-stat"><strong id="test-count-right">0</strong><span>右键</span></div>
+            <div id="test-stat-middle" class="test-stat"><strong id="test-count-middle">0</strong><span>中键</span></div>
+            <div class="test-stat"><strong id="test-count-rapid">0</strong><span>疑似连击 <small>≤ 40 ms</small></span></div>
+            <div id="test-stat-forward" class="test-stat"><strong id="test-count-forward">0</strong><span>前进</span></div>
+            <div id="test-stat-back" class="test-stat"><strong id="test-count-back">0</strong><span>后退</span></div>
+          </section>
+          <div id="mouse-test-zone" class="mouse-test-zone" role="group" tabindex="0" aria-label="鼠标测试区域" aria-describedby="mouse-test-instructions">
+            <span class="test-zone-label">测试区</span>
+            <svg class="test-mouse" viewBox="0 0 200 310" fill="none" aria-hidden="true">
+              <path class="test-mouse-body" d="M100 18C64 18 40 40 34 76c-6 33-6 69-6 106 0 66 22 110 72 110s72-44 72-110c0-37 0-73-6-106-6-36-30-58-66-58Z"/>
+              <path class="test-mouse-part" data-mouse-button="0" d="M92 20C60 23 41 43 35 77c-4 23-5 45-5 69h62Z"/>
+              <path class="test-mouse-part" data-mouse-button="2" d="M108 20c32 3 51 23 57 57 4 23 5 45 5 69h-62Z"/>
+              <path class="test-mouse-seam" d="M92 19v108a8 8 0 0 0 16 0V19M30 146h140"/>
+              <rect class="test-mouse-part test-wheel" data-mouse-button="1" x="93" y="54" width="14" height="43" rx="7"/>
+              <path class="test-wheel-grip" d="M97 63h6m-6 5h6m-6 5h6m-6 5h6m-6 5h6m-6 5h6"/>
+              <circle class="test-mouse-seam" cx="100" cy="120" r="3"/>
+              <rect class="test-mouse-part" data-mouse-button="4" x="22" y="150" width="7" height="26" rx="3"/>
+              <rect class="test-mouse-part" data-mouse-button="3" x="22" y="185" width="7" height="26" rx="3"/>
+              <path class="test-scroll-arrow test-arrow-up" d="m96 41 4-4 4 4"/>
+              <path class="test-scroll-arrow test-arrow-down" d="m96 105 4 4 4-4"/>
+            </svg>
+            <p id="mouse-test-live" class="test-live" role="status">在此区域内点击或滚动</p>
+            <p id="mouse-test-instructions" class="field-hint">支持长按与同时按下多个按键</p>
+            <dl class="test-scroll-counts" aria-label="滚轮事件次数">
+              <div><dt>上滚</dt><dd id="test-scroll-up">0</dd></div><div><dt>下滚</dt><dd id="test-scroll-down">0</dd></div>
+              <div><dt>左滚</dt><dd id="test-scroll-left">0</dd></div><div><dt>右滚</dt><dd id="test-scroll-right">0</dd></div>
+            </dl>
+          </div>
+          <section class="test-records" aria-labelledby="test-records-heading">
+            <header><h2 id="test-records-heading">按键记录</h2><span class="field-hint">最近 60 条</span></header>
+            <p id="mouse-test-empty" class="test-empty">在测试区内按下任意按键<br>开始记录</p>
+            <ol id="mouse-test-events" class="test-event-list" aria-label="按键和滚轮记录"></ol>
+          </section>
+        </div>
+        <p class="test-footnote">按下时计数，长按不重复。疑似连击为同一按键两次按下间隔 ≤ 40 ms，仅作提示；滚轮按浏览器事件计数。DPI 等内部功能键不在通用测试范围内。</p>
       </section>
 
       <section id="debug-page" class="page" aria-labelledby="debug-heading" hidden>
@@ -120,7 +183,7 @@
         </section>
         <section class="panel debug-config" aria-labelledby="snapshot-heading">
           <header class="panel-heading"><h2 id="snapshot-heading">配置快照</h2><span id="config-badge" class="badge">未读取</span></header>
-          <dl class="snapshot-metrics"><div><dt>产品型号</dt><dd id="config-model">待识别</dd></div><div><dt>读取时间</dt><dd id="config-time">--</dd></div></dl>
+          <dl class="snapshot-metrics"><div><dt>产品型号</dt><dd id="config-model">待识别</dd></div><div><dt>回报率</dt><dd id="config-polling">--</dd></div><div><dt>读取时间</dt><dd id="config-time">--</dd></div></dl>
           <div id="dpi-stages" class="dpi-stages" aria-label="已读取的 DPI 档位"><span class="field-hint">尚未读取配置</span></div>
           <p id="query-status" class="field-hint" role="status">尚未读取配置</p>
         </section>

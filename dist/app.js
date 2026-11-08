@@ -1,6 +1,8 @@
 import { G3_PROFILE } from './protocol.js';
 import { G3Session } from './session.js';
 import { DpiEditor } from './dpi-editor.js';
+import { PollingEditor } from './polling-editor.js';
+import { MouseTester } from './mouse-tester.js';
 
 const el = (id) => document.getElementById(id);
 const text = (id, value) => {
@@ -13,6 +15,9 @@ const timeFormat = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '
 const time = (value) => value == null ? '--' : timeFormat.format(new Date(value));
 const hex = (value) => value.toString(16).padStart(4, '0').toUpperCase();
 let dpiEditor = null;
+let pollingEditor = null;
+let mouseTester = null;
+let currentView = 'settings';
 let stagesKey = null;
 let reportsKey = null;
 
@@ -35,7 +40,7 @@ function initializeAppearance() {
 }
 
 function initializeNavigation() {
-  const pages = { settings: ['settings-page', 'settings-heading', '设备设置'], debug: ['debug-page', 'debug-heading', '调试'] };
+  const pages = { settings: ['settings-page', 'settings-heading', '设备设置'], test: ['mouse-test-page', 'mouse-test-heading', '按键测试'], debug: ['debug-page', 'debug-heading', '调试'] };
   const show = (focus = false) => {
     let view = location.hash.slice(1);
     if (view === 'main-content') {
@@ -47,6 +52,9 @@ function initializeNavigation() {
       history.replaceState(null, '', '#settings');
     }
     for (const [name, [id]] of Object.entries(pages)) el(id).hidden = name !== view;
+    currentView = view;
+    el('device-notices').hidden = view === 'test';
+    mouseTester?.setActive(view === 'test');
     document.querySelectorAll('.nav-link').forEach((link) => {
       if (link.dataset.view === view) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
@@ -69,6 +77,9 @@ initializeAppearance();
 initializeNavigation();
 const session = new G3Session({ hid: usable ? navigator.hid : null, onChange: render });
 dpiEditor = new DpiEditor(session);
+pollingEditor = new PollingEditor(session);
+mouseTester = new MouseTester();
+mouseTester.setActive(currentView === 'test');
 
 function badge(id, value, kind = '') {
   text(id, value);
@@ -78,7 +89,7 @@ function badge(id, value, kind = '') {
 
 function render(state = session.snapshot()) {
   const connected = state.phase === 'connected';
-  const names = { idle: '未连接', choosing: '选择设备中', opening: '正在连接', connected: '已连接', closing: '正在断开', removed: '接收器已拔出', error: '连接异常' };
+  const names = { idle: '未连接', searching: '查找接收器', choosing: '选择设备中', opening: '正在连接', connected: '已连接', closing: '正在断开', removed: '接收器已拔出', error: '连接异常' };
   badge('connection-badge', names[state.phase], connected ? 'good' : state.phase === 'error' ? 'bad' : '');
   el('connect').disabled = !usable || state.busy || state.hasOpenDevice || state.queryBusy;
   el('connect').hidden = state.hasOpenDevice;
@@ -86,7 +97,7 @@ function render(state = session.snapshot()) {
   el('disconnect').hidden = !state.hasOpenDevice;
   text('connect', state.busy ? names[state.phase] : '连接接收器');
   text('device-name', state.identity?.matchesG3 ? '迈从 G3 V1' : state.device?.productName || '迈从 G3 V1');
-  const help = !connected ? state.phase === 'removed' ? '插回接收器后重新连接。' : '首次连接需在浏览器中选择接收器。' : state.link === 'offline' ? '鼠标已离线，请轻动唤醒。' : '';
+  const help = !connected ? state.automatic.suspended ? '已断开，点击连接可恢复。' : state.phase === 'removed' ? '等待接收器接入；已有授权时会自动连接。' : '未找到可用授权时，请点击连接接收器。' : state.link === 'offline' ? '鼠标已离线，唤醒后会自动恢复配置。' : '';
   text('connection-help', help);
   el('connection-help').hidden = !help;
   text('receiver-state', connected ? '已连接' : '未连接');
@@ -152,6 +163,7 @@ function render(state = session.snapshot()) {
     }
   }
   dpiEditor?.update(state);
+  pollingEditor?.update(state);
   const reports = state.events.filter((event) => event.type === 'report' || event.type === 'feature').slice(-30).reverse();
   const nextReportsKey = JSON.stringify(reports);
   if (nextReportsKey !== reportsKey) {
@@ -160,7 +172,7 @@ function render(state = session.snapshot()) {
       el('reports').replaceChildren(...reports.map((report) => {
         const row = document.createElement('tr');
         const parsed = report.parsed;
-        const meaning = report.type === 'feature' ? (report.operation?.startsWith('write-dpi') ? 'DPI 写入' : report.operation === 'read-configuration' ? '配置读取' : '产品识别') + ' · ' + (report.direction === 'out' ? '发送' : '返回 ' + String(report.receivedBytes) + ' 字节') : parsed?.type === 'battery' ? '电量 ' + String(parsed.percent) + '%' : parsed?.type === 'dpi-stage' ? '切换到第 ' + String(parsed.stage) + ' 档' : parsed?.type === 'connection' ? '鼠标' + (parsed.online ? '在线' : '离线') : '未解析';
+        const meaning = report.type === 'feature' ? (report.operation === 'write-polling-rate' ? '回报率写入' : report.operation?.startsWith('write-dpi') ? 'DPI 写入' : report.operation === 'read-configuration' ? '配置读取' : '产品识别') + ' · ' + (report.direction === 'out' ? '发送' : '返回 ' + String(report.receivedBytes) + ' 字节') : parsed?.type === 'battery' ? '电量 ' + String(parsed.percent) + '%' : parsed?.type === 'dpi-stage' ? '切换到第 ' + String(parsed.stage) + ' 档' : parsed?.type === 'connection' ? '鼠标' + (parsed.online ? '在线' : '离线') : '未解析';
         const shownHex = report.hex.length > 95 ? report.hex.slice(0, 95) + ' …' : report.hex;
         for (const [index, value] of [time(report.time), shownHex, meaning].entries()) {
           const cell = document.createElement('td');
@@ -184,20 +196,24 @@ function render(state = session.snapshot()) {
 export function getDiagnosticSnapshot() {
   return {
     schemaVersion: 1,
-    appVersion: '0.5.1',
+    appVersion: '0.8.0',
     exportedAt: new Date().toISOString(),
     mode: 'dpi-configuration',
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext, webHidAvailable: 'hid' in navigator },
     profile: { ...G3_PROFILE },
     session: session.snapshot(),
     dpiEditor: dpiEditor.snapshot(),
-    ui: { view: el('debug-page').hidden ? 'settings' : 'debug', theme: document.documentElement.dataset.theme },
+    pollingEditor: pollingEditor.snapshot(),
+    mouseTest: mouseTester.snapshot(),
+    ui: { view: currentView, theme: document.documentElement.dataset.theme },
   };
 }
 
 el('connect').addEventListener('click', () => { void session.connect(); });
 el('disconnect').addEventListener('click', () => { void session.disconnect(); });
 el('read-config').addEventListener('click', () => { void session.readConfiguration(); });
+window.addEventListener('focus', () => session.resumeAutomatic());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) session.resumeAutomatic(); });
 el('export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(getDiagnosticSnapshot(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -216,4 +232,5 @@ if (!usable) {
   text('compatibility', '请使用桌面版 Chrome 或 Edge，通过本机地址或 HTTPS 打开页面。');
 }
 render();
+session.startAutomatic();
 setInterval(() => render(), 1000);

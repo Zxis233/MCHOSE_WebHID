@@ -12,6 +12,8 @@ export class DpiEditor {
   #selectedId = '';
   #draft = null;
   #dirty = false;
+  #stageDirty = false;
+  #pendingPhysicalStage = false;
   #nameDirty = false;
   #draftBackups = [];
   #loadedPreset = null;
@@ -91,6 +93,8 @@ export class DpiEditor {
     this.#draft = { values: [...value.values], currentStage: value.currentStage };
     this.#selectedId = id;
     this.#dirty = edited;
+    this.#stageDirty = edited || value.currentStage !== this.#state?.activeDpiStage;
+    this.#pendingPhysicalStage = false;
     this.#nameDirty = edited;
     this.#loadedPreset = structuredClone(this.#library.profiles.find((item) => item.id === id) ?? null);
     el('preset-name').value = name;
@@ -160,7 +164,7 @@ export class DpiEditor {
       radio.type = 'radio'; radio.name = 'current-draft-stage'; radio.value = String(index + 1);
       radio.checked = this.#draft.currentStage === index + 1;
       radio.setAttribute('aria-label', `应用后使用第 ${index + 1} 档`);
-      radio.addEventListener('change', () => { this.#draft.currentStage = index + 1; this.#dirty = true; this.#controls(); });
+      radio.addEventListener('change', () => { this.#draft.currentStage = index + 1; this.#dirty = true; this.#stageDirty = true; this.#pendingPhysicalStage = false; this.#controls(); });
       label.append(radio, document.createTextNode(`第 ${index + 1} 档`));
       const input = document.createElement('input');
       input.type = 'number'; input.min = '100'; input.max = '12000'; input.step = '100'; input.inputMode = 'numeric';
@@ -171,7 +175,7 @@ export class DpiEditor {
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button stage-remove'; remove.textContent = '删除';
       remove.setAttribute('aria-label', `删除第 ${index + 1} 档`);
       remove.addEventListener('click', () => {
-        try { this.#draft = removeDpiStage(this.#draft, index + 1); this.#dirty = true; this.#renderRows(); }
+        try { this.#draft = removeDpiStage(this.#draft, index + 1); this.#dirty = true; this.#stageDirty = true; this.#pendingPhysicalStage = false; this.#renderRows(); }
         catch (error) { this.#message = error.message; }
         this.#controls();
       });
@@ -200,15 +204,16 @@ export class DpiEditor {
     el('export-presets').disabled = this.#library.profiles.length === 0;
     el('add-dpi').disabled = busy || !this.#draft || this.#draft.values.length >= 6;
     el('apply-dpi-set').disabled = busy || !valid || matches || !board || this.#state?.phase !== 'connected' || this.#state.link === 'offline';
-    text('apply-dpi-set', this.#state?.queryKind === 'write' ? '正在应用…' : '应用到鼠标');
+    const writingPolling = this.#state?.queryKind === 'write' && this.#state.queryTarget === 'polling';
+    text('apply-dpi-set', this.#state?.queryKind === 'write' && !writingPolling ? '正在应用…' : '应用 DPI');
     el('draft-state').hidden = !this.#draft || matches;
     text('draft-state', '未应用');
     text('draft-count', `${this.#draft?.values.length ?? 0} / 6 档`);
     const message = this.#storageReady ? this.#message : '预设读取失败，原有数据未覆盖。';
     text('preset-status', message);
     el('preset-status').hidden = !message;
-    const last = this.#state?.lastWrite;
-    const status = this.#state?.queryBusy ? this.#state.queryKind === 'write' ? '正在应用并核对…' : '正在读取配置…' : last?.status === 'uncertain' ? '应用未确认，请重新读取设备。' : matches && last?.status === 'verified' && same(this.#draft, last.dpiSet) ? '已应用' : matches ? '与设备一致' : this.#draft && !valid ? 'DPI 需为 100–12000 之间的 100 的倍数。' : this.#draft ? board ? '修改尚未应用' : '读取设备配置后可应用' : '读取设备配置或选择一个预设。';
+    const last = this.#state?.lastWrite?.kind === 'polling' ? null : this.#state?.lastWrite;
+    const status = this.#state?.queryBusy ? writingPolling ? '正在应用回报率…' : this.#state.queryKind === 'write' ? '正在应用并核对…' : '正在读取配置…' : last?.status === 'uncertain' ? '应用未确认，请重新读取设备。' : matches && last?.status === 'verified' && same(this.#draft, last.dpiSet) ? '已应用' : matches ? '与设备一致' : this.#draft && !valid ? 'DPI 需为 100–12000 之间的 100 的倍数。' : this.#draft ? board ? '修改尚未应用' : '读取设备配置后可应用' : '读取设备配置或选择一个预设。';
     text('save-status', status);
     el('draft-stages').querySelectorAll('input').forEach((input) => { input.disabled = busy; });
     el('draft-stages').querySelectorAll('button').forEach((button) => { button.disabled = busy || this.#draft.values.length === 2; });
@@ -216,6 +221,9 @@ export class DpiEditor {
 
   update(state) {
     const previousStage = this.#state?.activeDpiStage;
+    const physicalChange = this.#state && state.dpiStageRevision !== this.#state.dpiStageRevision && previousStage !== state.activeDpiStage;
+    if (state.phase !== 'connected' || state.link === 'offline') this.#pendingPhysicalStage = false;
+    else if (physicalChange && Number.isInteger(state.activeDpiStage)) this.#pendingPhysicalStage = true;
     this.#state = state;
     const config = state.configuration;
     const key = config ? `${config.receivedAt}:${config.packetHex}` : null;
@@ -223,17 +231,19 @@ export class DpiEditor {
     if (key && key !== this.#configKey && (!this.#draft || (!this.#dirty && !this.#nameDirty && !this.#selectedId))) {
       try { this.#load(dpiSetFromConfiguration(config, state.activeDpiStage ?? config.currentStage), '', '我的灵敏度'); }
       catch (error) { this.#message = error.message; }
-    } else if (config && this.#draft && !state.queryBusy && state.phase === 'connected' && state.link !== 'offline' && (refreshed || previousStage !== state.activeDpiStage)) {
+    } else if (config && this.#draft && !state.queryBusy && state.phase === 'connected' && state.link !== 'offline' && (refreshed || this.#pendingPhysicalStage || previousStage !== state.activeDpiStage)) {
       try {
         const live = dpiSetFromConfiguration(config, state.activeDpiStage ?? config.currentStage);
         // A different draft may have reordered/deleted slots. Follow only the
         // device's own DPI group; keep pending values and other presets intact.
-        if (same(this.#draft.values, live.values)) {
+        if (same(this.#draft.values, live.values) && (this.#pendingPhysicalStage || !this.#stageDirty || this.#draft.currentStage === live.currentStage)) {
           this.#draft.currentStage = live.currentStage;
+          this.#stageDirty = false;
           el('draft-stages').querySelectorAll('input[type="radio"]').forEach((radio) => {
             radio.checked = Number(radio.value) === live.currentStage;
           });
         }
+        this.#pendingPhysicalStage = false;
       } catch { /* Unsupported or incomplete device data must not alter a draft. */ }
     }
     this.#configKey = key;
@@ -271,5 +281,5 @@ export class DpiEditor {
     this.#controls();
   }
 
-  snapshot() { return structuredClone({ selectedPresetId: this.#selectedId, draft: this.#draft, draftEdited: this.#dirty, nameEdited: this.#nameDirty, recoverableDrafts: this.#draftBackups.length, library: this.#library, storageReady: this.#storageReady }); }
+  snapshot() { return structuredClone({ selectedPresetId: this.#selectedId, draft: this.#draft, draftEdited: this.#dirty, stageEdited: this.#stageDirty, nameEdited: this.#nameDirty, recoverableDrafts: this.#draftBackups.length, library: this.#library, storageReady: this.#storageReady }); }
 }
