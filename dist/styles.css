@@ -109,8 +109,8 @@ dd { margin: 7px 0 0; line-height: 1.6; font-variant-numeric: tabular-nums; }
 .mouse-outline { fill: none; stroke: var(--muted); stroke-width: 1.3; stroke-linejoin: round; }
 .mouse-detail { fill: none; stroke: var(--faint); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
 .mouse-scroll { fill: var(--accent); }
-.mouse-side-buttons { stroke: var(--faint); stroke-width: 1.4; stroke-linecap: round; }
-.battery-display { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.mouse-side-buttons { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; }
+.battery-display { display: flex; flex-direction: column; align-items: center; gap: 12px; transform: translateY(8px); }
 .battery-gauge { position: relative; width: 19px; height: 89px; padding: 3px; border: 1px solid var(--faint); border-radius: 4px; background: var(--input); }
 .battery-gauge::before { content: ""; position: absolute; top: -4px; left: 5px; width: 7px; height: 3px; border-radius: 1px 1px 0 0; background: var(--faint); }
 .battery-track { position: absolute; inset: 3px; overflow: hidden; border-radius: 1px; }
