@@ -1,6 +1,6 @@
-import { G3_PROFILE, batteryView, describeDevice, inspectCapabilities, parseInputReport, toHex } from './protocol.js';
+import { G3_PROFILE, batteryView, describeDevice, inspectCapabilities, parseInputReport, toHex, transportForDevice, deviceRequestFilters } from './protocol.js';
 import { queryProductIdentity } from './identity.js';
-import { queryConfiguration } from './config.js';
+import { ConfigurationReceiveError, queryConfiguration } from './config.js';
 import { buildDpiWrite, sendDpiWrite, buildDpiSetWrite, sendDpiSetWrite } from './write-dpi.js';
 import { buildPollingRateWrite, sendPollingRateWrite } from './write-polling.js';
 
@@ -152,7 +152,7 @@ export class G3Session {
     }, action === 'read' ? Math.max(delay, this.#automaticNotBefore - Date.now()) : delay);
   }
 
-  async connect({ interactive = true } = {}) {
+  async connect({ interactive = true, selectDevice = false } = {}) {
     if (!this.#hid || this.#busy || this.#openingJob || this.#device || this.#queryJob) return;
     if (!interactive && this.#automaticSuspended) return;
     if (interactive) this.#automaticSuspended = false;
@@ -180,12 +180,8 @@ export class G3Session {
         this.#record('automatic-connect-unavailable', { reason: grantedMatches.length ? 'ambiguous' : 'no-grant' });
         return;
       }
-      const selected = grantedMatches.length === 1 ? grantedMatches : await this.#hid.requestDevice({ filters: [{
-        vendorId: G3_PROFILE.vendorId,
-        productId: G3_PROFILE.productId,
-        usagePage: G3_PROFILE.usagePage,
-        usage: G3_PROFILE.usage,
-      }] });
+      const reuseGrant = grantedMatches.length === 1 && !(interactive && selectDevice);
+      const selected = reuseGrant ? grantedMatches : await this.#hid.requestDevice({ filters: deviceRequestFilters() });
       if (generation !== this.#generation) return;
       if (selected.length === 0) {
         this.#phase = 'idle';
@@ -194,10 +190,10 @@ export class G3Session {
       }
       // One physical selection may expose several HID interfaces in WebHID.
       const compatible = selected.filter((device) => inspectCapabilities(device).passiveInputCompatible);
-      if (compatible.length > 1) throw new Error('找到多个匹配接口，请只连接一只目标接收器后重试。');
+      if (compatible.length > 1) throw new Error('找到多个匹配接口，请只选择一个目标设备后重试。');
       candidate = compatible[0] ?? selected[0];
       this.#metadata = describeDevice(candidate);
-      this.#record(grantedMatches.length === 1 ? 'reused-grant' : 'selected-device');
+      this.#record(reuseGrant ? 'reused-grant' : 'selected-device');
       this.#record('descriptor', { device: this.#metadata });
       if (!inspectCapabilities(candidate).passiveInputCompatible) {
         throw new Error('厂商集合或输入报告长度与 G3 V1 档案不匹配，已停止打开设备。');
@@ -285,7 +281,7 @@ export class G3Session {
   async readConfiguration({ automatic = false } = {}) {
     if (this.#queryJob) return;
     if (this.#phase !== 'connected' || !this.#device || this.#link === 'offline') {
-      this.#queryError = { name: 'DeviceUnavailable', message: '请连接接收器并轻动鼠标，等待鼠标上线后再读取。' };
+      this.#queryError = { name: 'DeviceUnavailable', message: '请连接鼠标并保持唤醒，等待鼠标上线后再读取。' };
       this.#notify();
       return;
     }
@@ -380,6 +376,11 @@ export class G3Session {
       this.#notify();
       return;
     }
+    if (!transportForDevice(this.#device)?.configurationWritable) {
+      this.#queryError = { name: 'ReadOnlyTransport', message: '有线模式目前仅支持读取，写入仍在验证。' };
+      this.#notify();
+      return;
+    }
     const device = this.#device;
     const generation = this.#generation;
     const revision = this.#stageRevision;
@@ -446,7 +447,24 @@ export class G3Session {
       entry.status = 'sent';
       await new Promise((resolve) => setTimeout(resolve, 100));
       check();
-      const readback = await queryConfiguration(device, identity, transfer);
+      let readback;
+      entry.readbackAttempts = 1;
+      try {
+        readback = await queryConfiguration(device, identity, transfer);
+      } catch (error) {
+        // A wired GET can fail after a successful SET. Recheck once without
+        // repeating the configuration write or releasing the transaction lock.
+        check();
+        if (transportForDevice(device)?.key !== 'wired' || !(error instanceof ConfigurationReceiveError)
+          || !['NetworkError', 'NotAllowedError'].includes(error.name)) throw error;
+        entry.readbackRetry = { name: error.name, message: error.message, delayMs: 500 };
+        this.#record('configuration-readback-retry', entry.readbackRetry);
+        this.#notify();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        check();
+        entry.readbackAttempts += 1;
+        readback = await queryConfiguration(device, identity, transfer);
+      }
       check();
       entry.readbackPacketHex = readback.packetHex;
       if (readback.packetHex !== plan.expectedPacketHex) throw new Error('读回配置与预期不一致。');
@@ -536,7 +554,7 @@ export class G3Session {
   };
 
   #onConnect = (event) => {
-    if (event.device.vendorId !== G3_PROFILE.vendorId || event.device.productId !== G3_PROFILE.productId) return;
+    if (!transportForDevice(event.device)) return;
     this.#record('receiver-available');
     this.#notify();
     if (this.#automatic && !this.#automaticSuspended) {

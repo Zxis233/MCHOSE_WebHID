@@ -1,6 +1,6 @@
 {
   "name": "mchose-g3-webhid",
-  "version": "0.8.0",
+  "version": "0.9.1",
   "private": true,
   "type": "module",
   "description": "MCHOSE G3 V1 WebHID diagnostics and protocol research",

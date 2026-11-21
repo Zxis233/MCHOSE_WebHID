@@ -51,7 +51,7 @@ export function parseProductIdentity(data, { maxBytes = 520 } = {}) {
 // This is the only active command implemented at this stage. It reproduces
 // the existing product lookup; it cannot take arbitrary opcodes or payloads.
 export async function queryProductIdentity(device, onTransfer = () => {}) {
-  if (!device.opened) throw new Error('请先连接接收器。');
+  if (!device.opened) throw new Error('请先连接鼠标。');
   if (!inspectCapabilities(device).featureCompatible) {
     throw new Error('厂商集合的 ID 9 Feature 报告长度不匹配，未发送请求。');
   }

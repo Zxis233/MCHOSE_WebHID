@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildReadConfigurationRequest, parseConfiguration, queryConfiguration } from '../dist/config.js';
+import { ConfigurationReceiveError, buildReadConfigurationRequest, parseConfiguration, queryConfiguration } from '../dist/config.js';
 import { mockDevice } from './fakes.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/g3-v1-config-read.json', import.meta.url), 'utf8'));
@@ -59,4 +59,24 @@ test('configuration query rejects missing or different product identity before s
   await assert.rejects(queryConfiguration(device, null), /产品标识/);
   await assert.rejects(queryConfiguration(device, { matchesG3: true, productCode: '04000000001B' }), /产品标识/);
   assert.equal(sent, false);
+});
+
+test('configuration query labels only GET transport errors for bounded readback recovery', async () => {
+  const device = mockDevice(); device.opened = true;
+  const failure = new DOMException('USB GET failed', 'NotAllowedError');
+  device.sendFeatureReport = async () => {};
+  device.receiveFeatureReport = async () => { throw failure; };
+  await assert.rejects(queryConfiguration(device, identity, () => {}, async () => {}), (error) => {
+    assert.ok(error instanceof ConfigurationReceiveError);
+    assert.equal(error.name, 'NotAllowedError'); assert.equal(error.cause, failure);
+    return true;
+  });
+  device.sendFeatureReport = async () => { throw failure; };
+  await assert.rejects(queryConfiguration(device, identity), (error) => error === failure);
+  device.sendFeatureReport = async () => {};
+  device.receiveFeatureReport = async () => new DataView(new ArrayBuffer(408));
+  await assert.rejects(queryConfiguration(device, identity, () => {}, async () => {}), (error) => {
+    assert.equal(error instanceof ConfigurationReceiveError, false);
+    return true;
+  });
 });

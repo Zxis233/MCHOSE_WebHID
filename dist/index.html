@@ -38,7 +38,7 @@
           <svg class="theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15a8.5 8.5 0 0 1-11-11A8.5 8.5 0 1 0 20 15Z"/></svg>
           <span id="theme-label">浅色模式</span>
         </button>
-        <span class="app-version">v0.8.0</span>
+        <span class="app-version">v0.9.1</span>
       </div>
     </aside>
 
@@ -77,12 +77,12 @@
           </div>
           <div class="device-info">
             <div class="device-heading"><h2 id="device-name">迈从 G3 V1</h2><span id="connection-badge" class="badge" aria-live="polite">未连接</span></div>
-            <p class="device-mode">2.4G 无线接收器</p>
+            <p id="device-mode" class="device-mode">USB 有线 / 2.4G</p>
             <dl class="device-metrics">
               <div><dt>当前 DPI</dt><dd id="config-current">--</dd></div>
             </dl>
-            <div class="device-actions"><button id="connect" class="button primary" type="button">连接接收器</button><button id="disconnect" class="button" type="button" disabled hidden>断开连接</button></div>
-            <p id="connection-help" class="device-note">保持接收器插入，使用 2.4G 模式。</p>
+            <div class="device-actions"><button id="connect" class="button primary" type="button">连接鼠标</button><button id="disconnect" class="button" type="button" disabled hidden>断开连接</button></div>
+            <p id="connection-help" class="device-note">连接 USB 有线鼠标或 2.4G 接收器。</p>
             <p class="battery-note"><span id="battery-badge">等待电量</span><span class="note-divider" aria-hidden="true">·</span><span id="battery-help">连接后等待上报</span></p>
           </div>
         </section>
@@ -178,7 +178,7 @@
       <section id="debug-page" class="page" aria-labelledby="debug-heading" hidden>
         <header class="page-header"><h1 id="debug-heading" tabindex="-1">调试</h1><button id="export" class="button secondary" type="button">导出诊断 JSON</button></header>
         <section class="panel debug-summary" aria-label="会话状态">
-          <dl class="debug-metrics"><div><dt>接收器</dt><dd id="receiver-state">未连接</dd></div><div><dt>鼠标链路</dt><dd id="mouse-state">尚未确认</dd></div><div><dt>最近电量上报</dt><dd id="battery-time">--</dd></div><div><dt>收到报告</dt><dd id="report-count">0</dd></div></dl>
+          <dl class="debug-metrics"><div><dt>连接设备</dt><dd id="receiver-state">未连接</dd></div><div><dt>鼠标链路</dt><dd id="mouse-state">尚未确认</dd></div><div><dt>最近电量上报</dt><dd id="battery-time">--</dd></div><div><dt>收到报告</dt><dd id="report-count">0</dd></div></dl>
         </section>
         <section class="panel reports-panel" aria-labelledby="reports-heading">
           <header class="panel-heading"><h2 id="reports-heading">通信记录</h2><span class="field-hint">最近 30 条</span></header>

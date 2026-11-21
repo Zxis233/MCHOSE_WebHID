@@ -1,4 +1,4 @@
-import { G3_PROFILE, inspectCapabilities, toHex } from './protocol.js';
+import { G3_PROFILE, inspectCapabilities, toHex, transportForDevice } from './protocol.js';
 import { G3_PRODUCT_CODE } from './identity.js';
 import { parseConfiguration } from './config.js';
 
@@ -23,7 +23,8 @@ export function configurationWritePlan(packet, expected, details) {
 }
 
 export function requireConfigurationTarget(device, identity) {
-  if (!device.opened || !inspectCapabilities(device).featureCompatible || !identity?.matchesG3 || identity.productCode !== G3_PRODUCT_CODE) throw new Error('未确认目标 G3 接收器，未发送写入。');
+  if (!device.opened || !inspectCapabilities(device).featureCompatible || !identity?.matchesG3 || identity.productCode !== G3_PRODUCT_CODE) throw new Error('未确认目标 G3 设备，未发送写入。');
+  if (!transportForDevice(device)?.configurationWritable) throw new Error('有线模式目前仅支持读取，写入仍在验证。');
 }
 
 export async function sendConfigurationWrite(device, identity, plan, operation, onTransfer) {

@@ -9,6 +9,22 @@ export const G3_PROFILE = Object.freeze({
   staleAfterMs: 180_000,
 });
 
+export const G3_TRANSPORTS = Object.freeze([
+  Object.freeze({ key: 'receiver', productId: 0x0138, label: '2.4G 无线接收器', configurationWritable: true }),
+  Object.freeze({ key: 'wired', productId: 0x0136, label: 'USB 有线连接', configurationWritable: true }),
+]);
+
+export function transportForDevice(device) {
+  if (device?.vendorId !== G3_PROFILE.vendorId) return null;
+  return G3_TRANSPORTS.find((transport) => transport.productId === device.productId) ?? null;
+}
+
+export function deviceRequestFilters() {
+  // Restrict the chooser to the two known USB IDs. Validate the exact vendor
+  // collection/report sizes after selection, before opening either transport.
+  return G3_TRANSPORTS.map(({ productId }) => ({ vendorId: G3_PROFILE.vendorId, productId }));
+}
+
 export function bytesOf(data) {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
   if (ArrayBuffer.isView(data)) {
@@ -44,7 +60,7 @@ export function reportPayloadBytes(report) {
 }
 
 export function targetCollection(device) {
-  if (device.vendorId !== G3_PROFILE.vendorId || device.productId !== G3_PROFILE.productId) return null;
+  if (!transportForDevice(device)) return null;
   return (device.collections ?? []).find((collection) =>
     collection.usagePage === G3_PROFILE.usagePage && collection.usage === G3_PROFILE.usage) ?? null;
 }
@@ -86,6 +102,8 @@ export function describeDevice(device) {
     productName: device.productName,
     vendorId: device.vendorId,
     productId: device.productId,
+    transport: transportForDevice(device)?.key ?? null,
+    configurationWritable: transportForDevice(device)?.configurationWritable === true,
     capabilities: inspectCapabilities(device),
     collections: (device.collections ?? []).map(describeCollection),
   };

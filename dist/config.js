@@ -6,6 +6,15 @@ const CONFIG_HEADER = Object.freeze([0x44, 0x00, 0x01, 0x00, 0x90, 0x01]);
 const POLLING_RATES = Object.freeze({ 1: 125, 2: 250, 3: 500, 4: 1000 });
 const CONFIG_BYTES = 408;
 
+// Preserve the API error name while distinguishing GET failures from a failed
+// read request, identity gate, or response validation. Only GET can be rechecked.
+export class ConfigurationReceiveError extends Error {
+  constructor(cause) {
+    super(cause?.message ?? '配置 GET 传输失败。', { cause });
+    this.name = cause?.name ?? 'Error';
+  }
+}
+
 export function buildReadConfigurationRequest() {
   const payload = new Uint8Array(G3_PROFILE.featurePayloadBytes);
   payload.set(READ_PREFIX);
@@ -52,14 +61,19 @@ export function parseConfiguration(data, { maxBytes = 520 } = {}) {
 }
 
 export async function queryConfiguration(device, identity, onTransfer = () => {}, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {
-  if (!device.opened || !inspectCapabilities(device).featureCompatible) throw new Error('请先连接匹配的接收器。');
+  if (!device.opened || !inspectCapabilities(device).featureCompatible) throw new Error('请先连接匹配的鼠标。');
   if (!identity?.matchesG3 || identity.productCode !== G3_PRODUCT_CODE) throw new Error('产品标识尚未确认是 G3，未发送配置读取请求。');
   const payload = buildReadConfigurationRequest();
   onTransfer({ api: 'sendFeatureReport', direction: 'out', operation: 'read-configuration', reportId: 9, payloadBytes: payload.length, hex: `09 ${toHex(payload)}` });
   await device.sendFeatureReport(9, payload);
   // Official capture frames 20267/20271 were separated by about 107 ms.
   await wait(100);
-  const response = await device.receiveFeatureReport(9);
+  let response;
+  try {
+    response = await device.receiveFeatureReport(9);
+  } catch (error) {
+    throw new ConfigurationReceiveError(error);
+  }
   onTransfer({ api: 'receiveFeatureReport', direction: 'in', operation: 'read-configuration', reportId: 9, receivedBytes: response.byteLength, hex: toHex(response) });
   return parseConfiguration(response, { maxBytes: maxFeatureReportBytes(device) });
 }

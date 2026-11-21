@@ -1,4 +1,4 @@
-import { G3_PROFILE } from './protocol.js';
+import { G3_PROFILE, G3_TRANSPORTS, transportForDevice } from './protocol.js';
 import { G3Session } from './session.js';
 import { DpiEditor } from './dpi-editor.js';
 import { PollingEditor } from './polling-editor.js';
@@ -89,19 +89,21 @@ function badge(id, value, kind = '') {
 
 function render(state = session.snapshot()) {
   const connected = state.phase === 'connected';
-  const names = { idle: '未连接', searching: '查找接收器', choosing: '选择设备中', opening: '正在连接', connected: '已连接', closing: '正在断开', removed: '接收器已拔出', error: '连接异常' };
+  const transport = transportForDevice(state.device);
+  const names = { idle: '未连接', searching: '查找设备', choosing: '选择设备中', opening: '正在连接', connected: '已连接', closing: '正在断开', removed: '设备已拔出', error: '连接异常' };
   badge('connection-badge', names[state.phase], connected ? 'good' : state.phase === 'error' ? 'bad' : '');
   el('connect').disabled = !usable || state.busy || state.hasOpenDevice || state.queryBusy;
   el('connect').hidden = state.hasOpenDevice;
   el('disconnect').disabled = state.busy || !state.hasOpenDevice;
   el('disconnect').hidden = !state.hasOpenDevice;
-  text('connect', state.busy ? names[state.phase] : '连接接收器');
+  text('connect', state.busy ? names[state.phase] : '连接鼠标');
   text('device-name', state.identity?.matchesG3 ? '迈从 G3 V1' : state.device?.productName || '迈从 G3 V1');
-  const help = !connected ? state.automatic.suspended ? '已断开，点击连接可恢复。' : state.phase === 'removed' ? '等待接收器接入；已有授权时会自动连接。' : '未找到可用授权时，请点击连接接收器。' : state.link === 'offline' ? '鼠标已离线，唤醒后会自动恢复配置。' : '';
+  text('device-mode', transport?.label ?? 'USB 有线 / 2.4G');
+  const help = !connected ? state.automatic.suspended ? '已断开，点击连接可恢复。' : state.phase === 'removed' ? '等待设备接入；已有授权时会自动连接。' : '未找到可用授权时，请点击连接鼠标。' : state.link === 'offline' ? '鼠标已离线，唤醒后会自动恢复配置。' : transport?.configurationWritable === false ? '有线模式目前仅开放读取，写入仍在验证。' : '';
   text('connection-help', help);
   el('connection-help').hidden = !help;
   text('receiver-state', connected ? '已连接' : '未连接');
-  text('mouse-state', state.link === 'online' ? '在线' : state.link === 'offline' ? '离线' : '尚未确认');
+  text('mouse-state', state.link === 'online' ? '在线' : state.link === 'offline' ? '离线' : connected && transport?.key === 'wired' ? 'USB 已连接' : '尚未确认');
   text('report-count', state.reportCount);
   text('battery-time', time(state.battery?.receivedAt));
 
@@ -118,7 +120,7 @@ function render(state = session.snapshot()) {
     text('battery-help', '鼠标离线');
   } else if (reading.percent === null) {
     text('battery-badge', '等待电量');
-    text('battery-help', '轻动鼠标后等待上报');
+    text('battery-help', transport?.key === 'wired' ? '等待电量上报' : '轻动鼠标后等待上报');
   } else {
     text('battery-badge', reading.stale ? '电量已过期' : '电量');
     text('battery-help', time(state.battery.receivedAt) + ' 上报');
@@ -196,11 +198,12 @@ function render(state = session.snapshot()) {
 export function getDiagnosticSnapshot() {
   return {
     schemaVersion: 1,
-    appVersion: '0.8.0',
+    appVersion: '0.9.1',
     exportedAt: new Date().toISOString(),
     mode: 'dpi-configuration',
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext, webHidAvailable: 'hid' in navigator },
     profile: { ...G3_PROFILE },
+    transports: G3_TRANSPORTS.map((transport) => ({ ...transport })),
     session: session.snapshot(),
     dpiEditor: dpiEditor.snapshot(),
     pollingEditor: pollingEditor.snapshot(),
@@ -209,7 +212,7 @@ export function getDiagnosticSnapshot() {
   };
 }
 
-el('connect').addEventListener('click', () => { void session.connect(); });
+el('connect').addEventListener('click', () => { void session.connect({ selectDevice: true }); });
 el('disconnect').addEventListener('click', () => { void session.disconnect(); });
 el('read-config').addEventListener('click', () => { void session.readConfiguration(); });
 window.addEventListener('focus', () => session.resumeAutomatic());

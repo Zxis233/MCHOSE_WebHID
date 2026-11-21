@@ -29,7 +29,7 @@ const state = {
 const save = () => writeFileSync(stateFile, JSON.stringify(state, null, 2), 'utf8');
 save();
 console.log(`Capture ${hub}, device address ${address}. Output: ${output}`);
-console.log('Approve the USBPcap UAC prompt if shown. Keep the receiver inserted.');
+console.log('Approve the USBPcap UAC prompt if shown. Keep the selected USB device connected.');
 console.log(`Direct-file capture. Ctrl+C to stop; automatic deadline is ${durationSeconds} seconds.`);
 const child = spawn(program, args, { stdio: 'inherit', windowsHide: true });
 state.collectorPid = child.pid ?? null;

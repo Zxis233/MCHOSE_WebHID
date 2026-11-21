@@ -46,7 +46,7 @@ const server = createServer(async (request, response) => {
   catch { response.writeHead(400, headers).end(); return; }
   if (pathname === '/health') {
     response.writeHead(200, { ...headers, 'Content-Type': 'application/json' });
-    response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ app: 'mchose-g3-webhid', version: '0.8.0', mode: 'dpi-configuration' }));
+    response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ app: 'mchose-g3-webhid', version: '0.9.1', mode: 'dpi-configuration' }));
     return;
   }
   const entry = files.get(pathname);

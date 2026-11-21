@@ -203,7 +203,8 @@ export class DpiEditor {
     el('import-presets').disabled = busy || !this.#storageReady;
     el('export-presets').disabled = this.#library.profiles.length === 0;
     el('add-dpi').disabled = busy || !this.#draft || this.#draft.values.length >= 6;
-    el('apply-dpi-set').disabled = busy || !valid || matches || !board || this.#state?.phase !== 'connected' || this.#state.link === 'offline';
+    const readOnly = this.#state?.device?.configurationWritable === false;
+    el('apply-dpi-set').disabled = busy || readOnly || !valid || matches || !board || this.#state?.phase !== 'connected' || this.#state.link === 'offline';
     const writingPolling = this.#state?.queryKind === 'write' && this.#state.queryTarget === 'polling';
     text('apply-dpi-set', this.#state?.queryKind === 'write' && !writingPolling ? '正在应用…' : '应用 DPI');
     el('draft-state').hidden = !this.#draft || matches;
@@ -213,7 +214,7 @@ export class DpiEditor {
     text('preset-status', message);
     el('preset-status').hidden = !message;
     const last = this.#state?.lastWrite?.kind === 'polling' ? null : this.#state?.lastWrite;
-    const status = this.#state?.queryBusy ? writingPolling ? '正在应用回报率…' : this.#state.queryKind === 'write' ? '正在应用并核对…' : '正在读取配置…' : last?.status === 'uncertain' ? '应用未确认，请重新读取设备。' : matches && last?.status === 'verified' && same(this.#draft, last.dpiSet) ? '已应用' : matches ? '与设备一致' : this.#draft && !valid ? 'DPI 需为 100–12000 之间的 100 的倍数。' : this.#draft ? board ? '修改尚未应用' : '读取设备配置后可应用' : '读取设备配置或选择一个预设。';
+    const status = this.#state?.queryBusy ? writingPolling ? '正在应用回报率…' : this.#state.queryKind === 'write' ? '正在应用并核对…' : '正在读取配置…' : readOnly ? '有线模式目前仅支持读取' : last?.status === 'uncertain' ? '应用未确认，请重新读取设备。' : matches && last?.status === 'verified' && same(this.#draft, last.dpiSet) ? '已应用' : matches ? '与设备一致' : this.#draft && !valid ? 'DPI 需为 100–12000 之间的 100 的倍数。' : this.#draft ? board ? '修改尚未应用' : '读取设备配置后可应用' : '读取设备配置或选择一个预设。';
     text('save-status', status);
     el('draft-stages').querySelectorAll('input').forEach((input) => { input.disabled = busy; });
     el('draft-stages').querySelectorAll('button').forEach((button) => { button.disabled = busy || this.#draft.values.length === 2; });
